@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Image,
@@ -9,8 +9,8 @@ import {
 } from 'react-native';
 import type { ScannerCorners, ScannerCorner } from '@/types';
 
-const HANDLE_SIZE = 28;
-const HANDLE_HIT = 40;
+const HANDLE_SIZE = 36;
+const HANDLE_HIT_RADIUS = 60;
 
 interface CornerSelectorProps {
   imageUri: string;
@@ -32,10 +32,18 @@ export default function CornerSelector({
 }: CornerSelectorProps) {
   const [layout, setLayout] = useState({ width: 0, height: 0 });
   const activeCornerRef = useRef<CornerKey | null>(null);
+
+  // Use refs so PanResponder always sees the latest values
   const cornersRef = useRef(corners);
   cornersRef.current = corners;
+  const onCornersChangeRef = useRef(onCornersChange);
+  onCornersChangeRef.current = onCornersChange;
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
 
   const imageAspect = imageWidth / imageHeight;
+
+  // Compute display dimensions for rendering
   const layoutAspect = layout.width / layout.height || 1;
   let displayW: number, displayH: number, offsetX: number, offsetY: number;
   if (imageAspect > layoutAspect) {
@@ -50,62 +58,78 @@ export default function CornerSelector({
     offsetY = 0;
   }
 
+  // Helper functions that read from refs (stable references)
+  const getDisplayMetrics = useCallback(() => {
+    const l = layoutRef.current;
+    const la = l.width / l.height || 1;
+    let dw: number, dh: number, ox: number, oy: number;
+    if (imageAspect > la) {
+      dw = l.width;
+      dh = l.width / imageAspect;
+      ox = 0;
+      oy = (l.height - dh) / 2;
+    } else {
+      dh = l.height;
+      dw = l.height * imageAspect;
+      ox = (l.width - dw) / 2;
+      oy = 0;
+    }
+    return { dw, dh, ox, oy };
+  }, [imageAspect]);
+
   const toScreen = useCallback(
-    (c: ScannerCorner) => ({
-      x: offsetX + c.x * displayW,
-      y: offsetY + c.y * displayH,
-    }),
-    [offsetX, offsetY, displayW, displayH],
-  );
-
-  const toNormalized = useCallback(
-    (sx: number, sy: number): ScannerCorner => ({
-      x: Math.max(0, Math.min(1, (sx - offsetX) / displayW)),
-      y: Math.max(0, Math.min(1, (sy - offsetY) / displayH)),
-    }),
-    [offsetX, offsetY, displayW, displayH],
-  );
-
-  const findClosestCorner = useCallback(
-    (px: number, py: number): CornerKey | null => {
-      let best: CornerKey | null = null;
-      let bestDist = Infinity;
-      for (const key of CORNER_KEYS) {
-        const sc = toScreen(cornersRef.current[key]);
-        const d = Math.hypot(sc.x - px, sc.y - py);
-        if (d < bestDist && d < HANDLE_HIT * 2) {
-          bestDist = d;
-          best = key;
-        }
-      }
-      return best;
+    (c: ScannerCorner) => {
+      const { dw, dh, ox, oy } = getDisplayMetrics();
+      return { x: ox + c.x * dw, y: oy + c.y * dh };
     },
-    [toScreen],
+    [getDisplayMetrics],
   );
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt: GestureResponderEvent) => {
-        const { locationX, locationY } = evt.nativeEvent;
-        activeCornerRef.current = findClosestCorner(locationX, locationY);
-      },
-      onPanResponderMove: (evt: GestureResponderEvent) => {
-        const key = activeCornerRef.current;
-        if (!key) return;
-        const { locationX, locationY } = evt.nativeEvent;
-        const normalized = toNormalized(locationX, locationY);
-        onCornersChange({
-          ...cornersRef.current,
-          [key]: normalized,
-        });
-      },
-      onPanResponderRelease: () => {
-        activeCornerRef.current = null;
-      },
-    }),
-  ).current;
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (evt: GestureResponderEvent) => {
+          const { locationX, locationY } = evt.nativeEvent;
+          const { dw, dh, ox, oy } = getDisplayMetrics();
+
+          // Find closest corner
+          let best: CornerKey | null = null;
+          let bestDist = Infinity;
+          for (const key of CORNER_KEYS) {
+            const c = cornersRef.current[key];
+            const sx = ox + c.x * dw;
+            const sy = oy + c.y * dh;
+            const d = Math.hypot(sx - locationX, sy - locationY);
+            if (d < bestDist && d < HANDLE_HIT_RADIUS) {
+              bestDist = d;
+              best = key;
+            }
+          }
+          activeCornerRef.current = best;
+        },
+        onPanResponderMove: (evt: GestureResponderEvent) => {
+          const key = activeCornerRef.current;
+          if (!key) return;
+          const { locationX, locationY } = evt.nativeEvent;
+          const { dw, dh, ox, oy } = getDisplayMetrics();
+
+          const normalized: ScannerCorner = {
+            x: Math.max(0, Math.min(1, (locationX - ox) / (dw || 1))),
+            y: Math.max(0, Math.min(1, (locationY - oy) / (dh || 1))),
+          };
+          onCornersChangeRef.current({
+            ...cornersRef.current,
+            [key]: normalized,
+          });
+        },
+        onPanResponderRelease: () => {
+          activeCornerRef.current = null;
+        },
+      }),
+    [getDisplayMetrics],
+  );
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     setLayout({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height });
@@ -202,7 +226,7 @@ const styles = StyleSheet.create({
     height: HANDLE_SIZE,
     borderRadius: HANDLE_SIZE / 2,
     backgroundColor: 'rgba(0,122,255,0.5)',
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: '#007aff',
   },
 });
