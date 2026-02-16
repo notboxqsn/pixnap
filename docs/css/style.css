@@ -134,6 +134,18 @@ nav .container {
   margin: 0 auto 40px;
 }
 
+.free-badge {
+  display: inline-block;
+  padding: 6px 20px;
+  background: rgba(61, 214, 208, 0.1);
+  border: 1px solid rgba(61, 214, 208, 0.3);
+  border-radius: 50px;
+  color: #3dd6d0;
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 24px;
+}
+
 .btn-appstore {
   display: inline-block;
   padding: 14px 36px;
@@ -181,6 +193,11 @@ nav .container {
 .feature-card:hover {
   background: var(--bg-card-hover);
   border-color: var(--accent);
+}
+
+.feature-card.highlight {
+  border-color: rgba(61, 214, 208, 0.4);
+  background: rgba(61, 214, 208, 0.05);
 }
 
 .feature-icon {
