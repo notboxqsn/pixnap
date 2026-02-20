@@ -1,0 +1,190 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 560" width="600" height="560">
+  <defs>
+    <!-- Dark background gradient -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0%" stop-color="#3a3d45"/>
+      <stop offset="100%" stop-color="#1e2028"/>
+    </linearGradient>
+    <!-- Document gradient (gray) -->
+    <linearGradient id="docGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#a0a4ac"/>
+      <stop offset="100%" stop-color="#787c84"/>
+    </linearGradient>
+    <!-- Folded corner -->
+    <linearGradient id="foldGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#c0c4cc"/>
+      <stop offset="100%" stop-color="#a0a4ac"/>
+    </linearGradient>
+    <!-- Red scan glow -->
+    <linearGradient id="scanGlow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(200,20,20,0)"/>
+      <stop offset="40%" stop-color="rgba(220,30,30,0.15)"/>
+      <stop offset="50%" stop-color="rgba(240,40,40,0.25)"/>
+      <stop offset="60%" stop-color="rgba(220,30,30,0.15)"/>
+      <stop offset="100%" stop-color="rgba(200,20,20,0)"/>
+    </linearGradient>
+    <!-- Cyan glow filter for brackets -->
+    <filter id="cyanGlow">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <!-- Subtle cyan glow for text pixels -->
+    <filter id="pixelGlow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <!-- Red line glow -->
+    <filter id="redGlow">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <!-- Document shadow -->
+    <filter id="docShadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="10" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+    <!-- Scan line particle glow -->
+    <filter id="particleGlow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="600" height="560" fill="url(#bgGrad)"/>
+
+  <!-- ===== DOCUMENT ===== -->
+  <g filter="url(#docShadow)">
+    <path d="M 190,80 L 360,80 L 400,120 L 400,470 Q 400,480 390,480 L 200,480 Q 190,480 190,470 Z" fill="url(#docGrad)"/>
+    <path d="M 360,80 L 360,120 L 400,120 Z" fill="url(#foldGrad)"/>
+  </g>
+
+  <!-- ===== CYAN PIXEL TEXT LINES ===== -->
+  <g filter="url(#pixelGlow)">
+    <!-- Line 1 -->
+    <rect x="218" y="138" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="230" y="138" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="242" y="138" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="254" y="138" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="266" y="138" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="278" y="138" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="290" y="138" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="302" y="138" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="314" y="138" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <!-- Line 2 -->
+    <rect x="218" y="162" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="230" y="162" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="242" y="162" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="254" y="162" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="266" y="162" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="278" y="162" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="290" y="162" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="302" y="162" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="314" y="162" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="326" y="162" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="338" y="162" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="350" y="162" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <!-- Line 3 -->
+    <rect x="218" y="186" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="230" y="186" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="242" y="186" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="254" y="186" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="266" y="186" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="278" y="186" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="290" y="186" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <!-- Line 4 -->
+    <rect x="218" y="210" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="230" y="210" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="242" y="210" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="254" y="210" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="266" y="210" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="278" y="210" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="290" y="210" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="302" y="210" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="314" y="210" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="326" y="210" width="9" height="9" fill="#4de8e0" rx="1"/>
+
+    <!-- Line 5 (below scan line) -->
+    <rect x="218" y="310" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="230" y="310" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="242" y="310" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="254" y="310" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="266" y="310" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="278" y="310" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="290" y="310" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="302" y="310" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="314" y="310" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="326" y="310" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="338" y="310" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <!-- Line 6 -->
+    <rect x="218" y="334" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="230" y="334" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="242" y="334" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="254" y="334" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="266" y="334" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="278" y="334" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="290" y="334" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="302" y="334" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <!-- Line 7 -->
+    <rect x="218" y="358" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="230" y="358" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="242" y="358" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="254" y="358" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="266" y="358" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="278" y="358" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="290" y="358" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="302" y="358" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="314" y="358" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="326" y="358" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="338" y="358" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="350" y="358" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <!-- Line 8 -->
+    <rect x="218" y="382" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="230" y="382" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="242" y="382" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="254" y="382" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="266" y="382" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="278" y="382" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="290" y="382" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="302" y="382" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="314" y="382" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <!-- Line 9 -->
+    <rect x="218" y="406" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="230" y="406" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="242" y="406" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="254" y="406" width="9" height="9" fill="#4de8e0" rx="1"/>
+    <rect x="266" y="406" width="9" height="9" fill="#4de8e0" rx="1"/><rect x="278" y="406" width="9" height="9" fill="#4de8e0" rx="1"/>
+  </g>
+
+  <!-- ===== PIXEL DISSOLVE on right edge ===== -->
+  <!-- Near pixels -->
+  <rect x="402" y="130" width="11" height="11" fill="#5a8a9a" opacity="0.85" rx="1"/>
+  <rect x="404" y="148" width="9" height="9" fill="#4a7a8a" opacity="0.75" rx="1"/>
+  <rect x="408" y="166" width="12" height="12" fill="#5a8a9a" opacity="0.7" rx="1"/>
+  <rect x="402" y="186" width="10" height="10" fill="#4a7a8a" opacity="0.75" rx="1"/>
+  <rect x="406" y="204" width="11" height="11" fill="#5a8a9a" opacity="0.65" rx="1"/>
+  <rect x="404" y="224" width="9" height="9" fill="#4a7a8a" opacity="0.7" rx="1"/>
+  <rect x="402" y="380" width="11" height="11" fill="#5a8a9a" opacity="0.8" rx="1"/>
+  <rect x="406" y="400" width="10" height="10" fill="#4a7a8a" opacity="0.7" rx="1"/>
+  <rect x="404" y="420" width="12" height="12" fill="#5a8a9a" opacity="0.65" rx="1"/>
+  <rect x="402" y="442" width="9" height="9" fill="#4a7a8a" opacity="0.6" rx="1"/>
+  <rect x="406" y="460" width="10" height="10" fill="#5a8a9a" opacity="0.55" rx="1"/>
+
+  <!-- Mid pixels -->
+  <rect x="418" y="136" width="8" height="8" fill="#4a7a8a" opacity="0.55" rx="1"/>
+  <rect x="422" y="156" width="9" height="9" fill="#5a8a9a" opacity="0.48" rx="1"/>
+  <rect x="420" y="178" width="7" height="7" fill="#4a7a8a" opacity="0.42" rx="1"/>
+  <rect x="418" y="198" width="8" height="8" fill="#5a8a9a" opacity="0.4" rx="1"/>
+  <rect x="422" y="218" width="7" height="7" fill="#4a7a8a" opacity="0.38" rx="1"/>
+  <rect x="418" y="386" width="8" height="8" fill="#5a8a9a" opacity="0.5" rx="1"/>
+  <rect x="420" y="408" width="9" height="9" fill="#4a7a8a" opacity="0.45" rx="1"/>
+  <rect x="418" y="430" width="7" height="7" fill="#5a8a9a" opacity="0.4" rx="1"/>
+  <rect x="422" y="450" width="8" height="8" fill="#4a7a8a" opacity="0.35" rx="1"/>
+  <rect x="420" y="468" width="9" height="9" fill="#5a8a9a" opacity="0.3" rx="1"/>
+
+  <!-- Far pixels -->
+  <rect x="434" y="142" width="6" height="6" fill="#4a7a8a" opacity="0.3" rx="1"/>
+  <rect x="438" y="164" width="5" height="5" fill="#5a8a9a" opacity="0.25" rx="1"/>
+  <rect x="436" y="188" width="6" height="6" fill="#4a7a8a" opacity="0.22" rx="1"/>
+  <rect x="434" y="210" width="5" height="5" fill="#5a8a9a" opacity="0.2" rx="1"/>
+  <rect x="434" y="394" width="6" height="6" fill="#4a7a8a" opacity="0.28" rx="1"/>
+  <rect x="436" y="416" width="5" height="5" fill="#5a8a9a" opacity="0.22" rx="1"/>
+  <rect x="438" y="440" width="6" height="6" fill="#4a7a8a" opacity="0.2" rx="1"/>
+  <rect x="434" y="462" width="5" height="5" fill="#5a8a9a" opacity="0.18" rx="1"/>
+
+  <!-- ===== RED SCAN LINE ===== -->
+  <rect x="100" y="248" width="400" height="60" fill="url(#scanGlow)"/>
+  <!-- Scan line particles -->
+  <g filter="url(#particleGlow)" opacity="0.6">
+    <circle cx="130" cy="278" r="1.5" fill="#ff4444"/>
+    <circle cx="145" cy="272" r="1" fill="#ff6666"/>
+    <circle cx="155" cy="282" r="1.2" fill="#ff4444"/>
+    <circle cx="118" cy="275" r="1" fill="#ff5555"/>
+    <circle cx="140" cy="285" r="0.8" fill="#ff6666"/>
+    <circle cx="460" cy="276" r="1.5" fill="#ff4444"/>
+    <circle cx="475" cy="280" r="1" fill="#ff6666"/>
+    <circle cx="485" cy="273" r="1.2" fill="#ff4444"/>
+    <circle cx="495" cy="279" r="0.8" fill="#ff5555"/>
+    <circle cx="450" cy="282" r="1" fill="#ff6666"/>
+    <circle cx="440" cy="270" r="1.2" fill="#ff4444"/>
+    <circle cx="125" cy="268" r="0.8" fill="#ff5555"/>
+    <circle cx="150" cy="290" r="1" fill="#ff4444"/>
+    <circle cx="470" cy="268" r="1" fill="#ff5555"/>
+    <circle cx="490" cy="286" r="0.8" fill="#ff4444"/>
+  </g>
+  <line x1="110" y1="278" x2="490" y2="278" stroke="#aa0000" stroke-width="4.5" stroke-linecap="round"/>
+  <line x1="110" y1="278" x2="490" y2="278" stroke="#dd2222" stroke-width="3" stroke-linecap="round" filter="url(#redGlow)"/>
+
+  <!-- ===== CYAN SCAN FRAME CORNERS ===== -->
+  <g stroke="#40d8d0" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#cyanGlow)">
+    <!-- Top-left -->
+    <path d="M 128,120 L 128,68 Q 128,56 140,56 L 188,56"/>
+    <!-- Top-right -->
+    <path d="M 402,56 L 450,56 Q 462,56 462,68 L 462,120"/>
+    <!-- Bottom-left -->
+    <path d="M 128,438 L 128,490 Q 128,502 140,502 L 188,502"/>
+    <!-- Bottom-right -->
+    <path d="M 402,502 L 450,502 Q 462,502 462,490 L 462,438"/>
+  </g>
+
+</svg>
