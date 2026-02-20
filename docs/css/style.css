@@ -214,19 +214,11 @@ nav .container {
 /* ── Showcase ─────────────────────────────────── */
 
 .showcase {
-  padding: 60px 0;
+  padding: 40px 0 0;
 }
 
-.showcase h2 {
-  text-align: center;
-  font-size: 1.8rem;
-  margin-bottom: 48px;
-}
-
-.showcase-grid {
-  display: grid;
+.showcase .features-grid {
   grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
 }
 
 .showcase-card {
@@ -241,22 +233,10 @@ nav .container {
 
 .showcase-card img {
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: cover;
   display: block;
   border-radius: var(--radius);
-}
-
-@media (max-width: 768px) {
-  .showcase-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 16px;
-  }
-}
-
-@media (max-width: 400px) {
-  .showcase-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* ── Footer ──────────────────────────────────── */
