@@ -223,9 +223,6 @@ nav .container {
   margin-bottom: 48px;
 }
 
-.showcase .features-grid {
-  grid-template-columns: repeat(4, 1fr);
-}
 
 .showcase-card {
   border-radius: var(--radius);
