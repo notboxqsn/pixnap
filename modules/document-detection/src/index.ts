@@ -10,7 +10,8 @@ interface Corners {
 const DocumentDetection = requireNativeModule('DocumentDetection');
 
 /**
- * Detect document boundaries in a base64 image using Apple Vision framework.
+ * Detect document boundaries in a base64 image.
+ * iOS uses Apple Vision framework; Android uses native gradient RANSAC algorithm.
  * Returns normalized corner coordinates (0-1) or null if no document found.
  */
 export async function detectDocument(base64: string): Promise<Corners | null> {

@@ -1,7 +1,10 @@
 {
-  "platforms": ["ios"],
+  "platforms": ["ios", "android"],
   "ios": {
     "modules": ["DocumentDetectionModule"],
     "podspecPath": "./ios/DocumentDetection.podspec"
+  },
+  "android": {
+    "modules": ["expo.modules.documentdetection.DocumentDetectionModule"]
   }
 }

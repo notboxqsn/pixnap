@@ -58,7 +58,7 @@ export default function ScanScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageSize, setImageSize] = useState({ width: 1, height: 1 });
   const [corners, setCorners] = useState<ScannerCorners>(DEFAULT_CORNERS);
-  const [enhanceMode, setEnhanceMode] = useState<EnhanceMode>('bw');
+  const [enhanceMode, setEnhanceMode] = useState<EnhanceMode>('color');
   const [processing, setProcessing] = useState(false);
   const [detecting, setDetecting] = useState(false);
   const [nativeScan, setNativeScan] = useState(false);
@@ -118,18 +118,18 @@ export default function ScanScreen() {
         const file = new File(asset.uri);
         const b64 = await file.base64();
         base64Ref.current = b64;
+        let found = false;
         try {
           const nativeCorners = await detectDocument(b64);
           if (nativeCorners) {
             setCorners(nativeCorners);
+            found = true;
           }
-        } catch {
-          // Native detection failed, try WebView fallback
-          if (processorRef.current) {
-            const detected = await processorRef.current.detect(b64);
-            if (detected) {
-              setCorners(detected);
-            }
+        } catch {}
+        if (!found && processorRef.current) {
+          const detected = await processorRef.current.detect(b64);
+          if (detected) {
+            setCorners(detected);
           }
         }
       } catch {
