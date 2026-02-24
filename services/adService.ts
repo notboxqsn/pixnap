@@ -7,7 +7,12 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const TAG = '[AdService]';
-const AD_UNIT_ID = TestIds.INTERSTITIAL;
+const AD_UNIT_ID = __DEV__
+  ? TestIds.INTERSTITIAL
+  : Platform.select({
+      ios: 'ca-app-pub-6262791337263815/2894638795',
+      android: 'ca-app-pub-6262791337263815/6833883809',
+    })!;
 const STORAGE_KEY = 'pixnap_daily_scan_count';
 
 let interstitial: InterstitialAd | null = null;

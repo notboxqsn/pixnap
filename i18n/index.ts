@@ -55,9 +55,9 @@ i18n.use(initReactI18next).init({
 });
 
 // Load persisted language preference asynchronously
-AsyncStorage.getItem(LANGUAGE_KEY).then((saved) => {
+export const i18nReady = AsyncStorage.getItem(LANGUAGE_KEY).then((saved) => {
   if (saved && SUPPORTED_CODES.includes(saved as any)) {
-    i18n.changeLanguage(saved);
+    return i18n.changeLanguage(saved);
   }
 });
 

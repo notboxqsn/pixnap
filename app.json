@@ -2,7 +2,7 @@
   "expo": {
     "name": "Pixnap",
     "slug": "pixnap",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -18,9 +18,10 @@
       "infoPlist": {
         "NSCameraUsageDescription": "需要相机权限来拍摄票据",
         "NSPhotoLibraryUsageDescription": "需要相册权限来选择票据图片",
+        "NSPhotoLibraryAddUsageDescription": "需要相册权限来保存扫描的图片",
         "NSUserTrackingUsageDescription": "This allows Pixnap to show you relevant ads."
       },
-      "bundleIdentifier": "com.anonymous.pixnap"
+      "bundleIdentifier": "me.pixnap"
     },
     "android": {
       "adaptiveIcon": {
@@ -30,11 +31,11 @@
       "edgeToEdgeEnabled": true,
       "permissions": [
         "CAMERA",
-        "com.google.android.gms.permission.AD_ID",
-        "CAMERA",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_EXTERNAL_STORAGE",
         "com.google.android.gms.permission.AD_ID"
       ],
-      "package": "com.anonymous.pixnap"
+      "package": "me.pixnap"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -51,11 +52,25 @@
       [
         "react-native-google-mobile-ads",
         {
-          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
-          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
+          "androidAppId": "ca-app-pub-6262791337263815~4072677450",
+          "iosAppId": "ca-app-pub-6262791337263815~9846555378"
         }
       ],
-      "expo-tracking-transparency"
-    ]
+      "expo-tracking-transparency",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "需要相册权限来保存扫描的图片",
+          "savePhotosPermission": "需要相册权限来保存扫描的图片"
+        }
+      ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "d7e9fdb2-d8d1-4383-8028-3e8518b288a0"
+      }
+    },
+    "owner": "binzhu"
   }
 }

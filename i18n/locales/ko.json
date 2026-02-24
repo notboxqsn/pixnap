@@ -33,5 +33,8 @@
   "tapToCapture": "화면을 탭하여 촬영",
   "aimAtDoc": "카메라를 문서에 맞추세요",
   "album": "앨범",
-  "language": "언어"
+  "language": "언어",
+  "savedSuccess": "저장 완료",
+  "imageSaved": "이미지가 갤러리에 저장되었습니다",
+  "pdfSaved": "PDF가 저장되었습니다"
 }

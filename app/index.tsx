@@ -15,8 +15,8 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { File, Paths, Directory } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import * as MediaLibrary from 'expo-media-library';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import DocumentScanner, { ResponseType, ScanDocumentResponseStatus } from 'react-native-document-scanner-plugin';
 import { useTranslation } from 'react-i18next';
 import Colors from '@/constants/Colors';
 import CornerSelector from '@/components/scanner/CornerSelector';
@@ -69,29 +69,43 @@ export default function ScanScreen() {
   const handleNativeScan = useCallback(async () => {
     try {
       await checkAndShowAd();
-      const result = await DocumentScanner.scanDocument({
-        responseType: ResponseType.Base64,
-        croppedImageQuality: 100,
+      const pickerResult = await ImagePicker.launchCameraAsync({
+        quality: 1,
+        mediaTypes: ['images'],
       });
-      if (result.status === ScanDocumentResponseStatus.Cancel || !result.scannedImages?.length) return;
-      const b64 = result.scannedImages[0];
-      base64Ref.current = b64;
-      // Decode image to get dimensions
-      await new Promise<void>((resolve) => {
-        Image.getSize(`data:image/jpeg;base64,${b64}`, (w, h) => {
-          setImageUri(`data:image/jpeg;base64,${b64}`);
-          setImageSize({ width: w, height: h });
-          resolve();
-        }, () => {
-          setImageUri(`data:image/jpeg;base64,${b64}`);
-          setImageSize({ width: 1, height: 1 });
-          resolve();
-        });
-      });
-      setCorners(FULL_CORNERS);
+      if (pickerResult.canceled || !pickerResult.assets[0]) return;
+      const asset = pickerResult.assets[0];
+      setImageUri(asset.uri);
+      setImageSize({ width: asset.width, height: asset.height });
+      setCorners(DEFAULT_CORNERS);
       setResult(null);
-      setNativeScan(true);
+      setNativeScan(false);
       setStep('crop');
+      // Auto-detect document corners
+      setDetecting(true);
+      try {
+        const file = new File(asset.uri);
+        const b64 = await file.base64();
+        base64Ref.current = b64;
+        let found = false;
+        try {
+          const nativeCorners = await detectDocument(b64);
+          if (nativeCorners) {
+            setCorners(nativeCorners);
+            found = true;
+          }
+        } catch {}
+        if (!found && processorRef.current) {
+          const detected = await processorRef.current.detect(b64);
+          if (detected) {
+            setCorners(detected);
+          }
+        }
+      } catch {
+        // detection failed silently, keep default corners
+      } finally {
+        setDetecting(false);
+      }
     } catch (e: any) {
       Alert.alert(t('scanFailed'), e.message || t('scanFailedMsg'));
     }
@@ -165,6 +179,11 @@ export default function ScanScreen() {
   const savePng = useCallback(async () => {
     if (!result) return;
     try {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(t('saveFailed'), t('saveImageFailed'));
+        return;
+      }
       const scansDir = new Directory(Paths.document, 'scans');
       if (!scansDir.exists) {
         scansDir.create();
@@ -172,7 +191,8 @@ export default function ScanScreen() {
       const outFile = new File(scansDir, `scan_${Date.now()}.png`);
       outFile.create();
       outFile.write(result.base64, { encoding: 'base64' });
-      await Sharing.shareAsync(outFile.uri, { mimeType: 'image/png' });
+      await MediaLibrary.saveToLibraryAsync(outFile.uri);
+      Alert.alert(t('savedSuccess'), t('imageSaved'));
     } catch (e: any) {
       Alert.alert(t('saveFailed'), e.message || t('saveImageFailed'));
     }

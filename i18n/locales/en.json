@@ -33,5 +33,8 @@
   "tapToCapture": "Tap screen to capture",
   "aimAtDoc": "Point camera at document",
   "album": "Album",
-  "language": "Language"
+  "language": "Language",
+  "savedSuccess": "Saved",
+  "imageSaved": "Image saved to gallery",
+  "pdfSaved": "PDF saved"
 }

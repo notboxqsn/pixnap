@@ -33,5 +33,8 @@
   "tapToCapture": "点击屏幕拍照",
   "aimAtDoc": "将相机对准文档",
   "album": "相册",
-  "language": "语言"
+  "language": "语言",
+  "savedSuccess": "保存成功",
+  "imageSaved": "图片已保存到相册",
+  "pdfSaved": "PDF 已保存"
 }

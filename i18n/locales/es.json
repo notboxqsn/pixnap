@@ -33,5 +33,8 @@
   "tapToCapture": "Toque la pantalla para capturar",
   "aimAtDoc": "Apunte la cámara al documento",
   "album": "Álbum",
-  "language": "Idioma"
+  "language": "Idioma",
+  "savedSuccess": "Guardado",
+  "imageSaved": "Imagen guardada en la galería",
+  "pdfSaved": "PDF guardado"
 }
