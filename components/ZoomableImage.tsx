@@ -64,7 +64,7 @@ export default function ZoomableImage({ uri, aspectRatio, children }: ZoomableIm
       savedTranslateY.value = 0;
     });
 
-  const composed = Gesture.Simultaneous(pinchGesture, panGesture, doubleTapGesture);
+  const composed = Gesture.Exclusive(doubleTapGesture, Gesture.Simultaneous(pinchGesture, panGesture));
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [

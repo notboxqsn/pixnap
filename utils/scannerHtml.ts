@@ -505,6 +505,15 @@ function orderCorners(pts) {
   return [top[0], top[1], bot[1], bot[0]]; // tl, tr, br, bl
 }
 
+function normalizeQuad(ordered, w, h) {
+  return {
+    tl: { x: Math.max(0, Math.min(1, ordered[0][0] / w)), y: Math.max(0, Math.min(1, ordered[0][1] / h)) },
+    tr: { x: Math.max(0, Math.min(1, ordered[1][0] / w)), y: Math.max(0, Math.min(1, ordered[1][1] / h)) },
+    br: { x: Math.max(0, Math.min(1, ordered[2][0] / w)), y: Math.max(0, Math.min(1, ordered[2][1] / h)) },
+    bl: { x: Math.max(0, Math.min(1, ordered[3][0] / w)), y: Math.max(0, Math.min(1, ordered[3][1] / h)) },
+  };
+}
+
 function validateQuad(pts, w, h) {
   if (!isConvex(pts)) return false;
   if (contourArea(pts) < 0.1 * w * h) return false;
@@ -524,6 +533,34 @@ function validateQuad(pts, w, h) {
     if (angle < 30 || angle > 150) return false;
   }
   return true;
+}
+
+function tryFitQuadFromHull(hull, epsilons, w, h, bestQuad, bestArea) {
+  var peri = 0;
+  for (var i = 0; i < hull.length; i++) {
+    var j = (i + 1) % hull.length;
+    var ddx = hull[j][0] - hull[i][0], ddy = hull[j][1] - hull[i][1];
+    peri += Math.sqrt(ddx * ddx + ddy * ddy);
+  }
+  for (var ei = 0; ei < epsilons.length; ei++) {
+    var approx = douglasPeucker(hull, epsilons[ei] * peri);
+    if (approx.length === 4) {
+      if (validateQuad(approx, w, h)) {
+        var area = contourArea(approx);
+        if (area > bestArea) { bestArea = area; bestQuad = approx; }
+      }
+    } else if (approx.length === 5) {
+      for (var skip = 0; skip < 5; skip++) {
+        var quad = [];
+        for (var k = 0; k < 5; k++) { if (k !== skip) quad.push(approx[k]); }
+        if (validateQuad(quad, w, h)) {
+          var area = contourArea(quad);
+          if (area > bestArea) { bestArea = area; bestQuad = quad; }
+        }
+      }
+    }
+  }
+  return { bestQuad: bestQuad, bestArea: bestArea };
 }
 
 function contourBasedDetection(edges, w, h) {
@@ -562,31 +599,8 @@ function contourBasedDetection(edges, w, h) {
       var hullArea = contourArea(hull);
       if (hullArea > 0.9 * w * h) continue; // background noise
 
-      var peri = 0;
-      for (var i = 0; i < hull.length; i++) {
-        var j = (i + 1) % hull.length;
-        var ddx = hull[j][0] - hull[i][0], ddy = hull[j][1] - hull[i][1];
-        peri += Math.sqrt(ddx * ddx + ddy * ddy);
-      }
-
-      for (var ei = 0; ei < epsilons.length; ei++) {
-        var approx = douglasPeucker(hull, epsilons[ei] * peri);
-        if (approx.length === 4) {
-          if (validateQuad(approx, w, h)) {
-            var area = contourArea(approx);
-            if (area > bestArea) { bestArea = area; bestQuad = approx; }
-          }
-        } else if (approx.length === 5) {
-          for (var skip = 0; skip < 5; skip++) {
-            var quad = [];
-            for (var k = 0; k < 5; k++) { if (k !== skip) quad.push(approx[k]); }
-            if (validateQuad(quad, w, h)) {
-              var area = contourArea(quad);
-              if (area > bestArea) { bestArea = area; bestQuad = quad; }
-            }
-          }
-        }
-      }
+      var fit = tryFitQuadFromHull(hull, epsilons, w, h, bestQuad, bestArea);
+      bestQuad = fit.bestQuad; bestArea = fit.bestArea;
     }
 
     if (bestQuad) break;
@@ -594,12 +608,7 @@ function contourBasedDetection(edges, w, h) {
 
   if (!bestQuad) return null;
   var ordered = orderCorners(bestQuad);
-  return {
-    tl: { x: Math.max(0, Math.min(1, ordered[0][0] / w)), y: Math.max(0, Math.min(1, ordered[0][1] / h)) },
-    tr: { x: Math.max(0, Math.min(1, ordered[1][0] / w)), y: Math.max(0, Math.min(1, ordered[1][1] / h)) },
-    br: { x: Math.max(0, Math.min(1, ordered[2][0] / w)), y: Math.max(0, Math.min(1, ordered[2][1] / h)) },
-    bl: { x: Math.max(0, Math.min(1, ordered[3][0] / w)), y: Math.max(0, Math.min(1, ordered[3][1] / h)) },
-  };
+  return normalizeQuad(ordered, w, h);
 }
 
 function otsuThreshold(gray, w, h) {
@@ -680,32 +689,9 @@ function segmentBasedDetection(gray, w, h) {
       var hullArea = contourArea(hull);
       if (hullArea > 0.9 * w * h || hullArea < 0.05 * w * h) continue;
 
-      var peri = 0;
-      for (var i = 0; i < hull.length; i++) {
-        var j = (i + 1) % hull.length;
-        var ddx = hull[j][0] - hull[i][0], ddy = hull[j][1] - hull[i][1];
-        peri += Math.sqrt(ddx * ddx + ddy * ddy);
-      }
-
-      var epsilons = [0.015, 0.02, 0.03, 0.04, 0.06];
-      for (var ei = 0; ei < epsilons.length; ei++) {
-        var approx = douglasPeucker(hull, epsilons[ei] * peri);
-        if (approx.length === 4) {
-          if (validateQuad(approx, w, h)) {
-            var area = contourArea(approx);
-            if (area > bestArea) { bestArea = area; bestQuad = approx; }
-          }
-        } else if (approx.length === 5) {
-          for (var skip = 0; skip < 5; skip++) {
-            var quad = [];
-            for (var k = 0; k < 5; k++) { if (k !== skip) quad.push(approx[k]); }
-            if (validateQuad(quad, w, h)) {
-              var area = contourArea(quad);
-              if (area > bestArea) { bestArea = area; bestQuad = quad; }
-            }
-          }
-        }
-      }
+      var segEpsilons = [0.015, 0.02, 0.03, 0.04, 0.06];
+      var fit = tryFitQuadFromHull(hull, segEpsilons, w, h, bestQuad, bestArea);
+      bestQuad = fit.bestQuad; bestArea = fit.bestArea;
     }
 
     if (bestQuad) break;
@@ -713,12 +699,7 @@ function segmentBasedDetection(gray, w, h) {
 
   if (!bestQuad) return null;
   var ordered = orderCorners(bestQuad);
-  return {
-    tl: { x: Math.max(0, Math.min(1, ordered[0][0] / w)), y: Math.max(0, Math.min(1, ordered[0][1] / h)) },
-    tr: { x: Math.max(0, Math.min(1, ordered[1][0] / w)), y: Math.max(0, Math.min(1, ordered[1][1] / h)) },
-    br: { x: Math.max(0, Math.min(1, ordered[2][0] / w)), y: Math.max(0, Math.min(1, ordered[2][1] / h)) },
-    bl: { x: Math.max(0, Math.min(1, ordered[3][0] / w)), y: Math.max(0, Math.min(1, ordered[3][1] / h)) },
-  };
+  return normalizeQuad(ordered, w, h);
 }
 
 function houghLines(edges, w, h) {
@@ -799,8 +780,11 @@ function findBestQuad(lines, w, h) {
   var maxSpreadH = 0;
   for (var i = 0; i < horizontal.length; i++) {
     for (var j = i + 1; j < horizontal.length; j++) {
-      var y1 = horizontal[i].rho / Math.sin(horizontal[i].theta);
-      var y2 = horizontal[j].rho / Math.sin(horizontal[j].theta);
+      var sinI = Math.sin(horizontal[i].theta);
+      var sinJ = Math.sin(horizontal[j].theta);
+      if (Math.abs(sinI) < 1e-6 || Math.abs(sinJ) < 1e-6) continue;
+      var y1 = horizontal[i].rho / sinI;
+      var y2 = horizontal[j].rho / sinJ;
       var d = Math.abs(y1 - y2);
       if (d > maxSpreadH) maxSpreadH = d;
     }
@@ -808,8 +792,11 @@ function findBestQuad(lines, w, h) {
   var bestH = null, bestHScore = 0;
   for (var i = 0; i < horizontal.length; i++) {
     for (var j = i + 1; j < horizontal.length; j++) {
-      var y1 = horizontal[i].rho / Math.sin(horizontal[i].theta);
-      var y2 = horizontal[j].rho / Math.sin(horizontal[j].theta);
+      var sinI = Math.sin(horizontal[i].theta);
+      var sinJ = Math.sin(horizontal[j].theta);
+      if (Math.abs(sinI) < 1e-6 || Math.abs(sinJ) < 1e-6) continue;
+      var y1 = horizontal[i].rho / sinI;
+      var y2 = horizontal[j].rho / sinJ;
       var spread = Math.abs(y1 - y2);
       var score = (horizontal[i].votes + horizontal[j].votes) * (0.6 + 0.4 * spread / (maxSpreadH || 1));
       if (score > bestHScore) {
@@ -821,8 +808,11 @@ function findBestQuad(lines, w, h) {
   var maxSpreadV = 0;
   for (var i = 0; i < vertical.length; i++) {
     for (var j = i + 1; j < vertical.length; j++) {
-      var x1 = vertical[i].rho / Math.cos(vertical[i].theta);
-      var x2 = vertical[j].rho / Math.cos(vertical[j].theta);
+      var cosI = Math.cos(vertical[i].theta);
+      var cosJ = Math.cos(vertical[j].theta);
+      if (Math.abs(cosI) < 1e-6 || Math.abs(cosJ) < 1e-6) continue;
+      var x1 = vertical[i].rho / cosI;
+      var x2 = vertical[j].rho / cosJ;
       var d = Math.abs(x1 - x2);
       if (d > maxSpreadV) maxSpreadV = d;
     }
@@ -830,8 +820,11 @@ function findBestQuad(lines, w, h) {
   var bestV = null, bestVScore = 0;
   for (var i = 0; i < vertical.length; i++) {
     for (var j = i + 1; j < vertical.length; j++) {
-      var x1 = vertical[i].rho / Math.cos(vertical[i].theta);
-      var x2 = vertical[j].rho / Math.cos(vertical[j].theta);
+      var cosI = Math.cos(vertical[i].theta);
+      var cosJ = Math.cos(vertical[j].theta);
+      if (Math.abs(cosI) < 1e-6 || Math.abs(cosJ) < 1e-6) continue;
+      var x1 = vertical[i].rho / cosI;
+      var x2 = vertical[j].rho / cosJ;
       var spread = Math.abs(x1 - x2);
       var score = (vertical[i].votes + vertical[j].votes) * (0.6 + 0.4 * spread / (maxSpreadV || 1));
       if (score > bestVScore) {
@@ -867,12 +860,7 @@ function findBestQuad(lines, w, h) {
   );
   if (quadArea < 0.1 * w * h) return null;
   // Normalize to 0-1
-  return {
-    tl: { x: Math.max(0, Math.min(1, tl[0] / w)), y: Math.max(0, Math.min(1, tl[1] / h)) },
-    tr: { x: Math.max(0, Math.min(1, tr[0] / w)), y: Math.max(0, Math.min(1, tr[1] / h)) },
-    br: { x: Math.max(0, Math.min(1, br[0] / w)), y: Math.max(0, Math.min(1, br[1] / h)) },
-    bl: { x: Math.max(0, Math.min(1, bl[0] / w)), y: Math.max(0, Math.min(1, bl[1] / h)) },
-  };
+  return normalizeQuad([tl, tr, br, bl], w, h);
 }
 
 function ransacLine(points, maxIter, distThresh) {
@@ -1040,12 +1028,7 @@ function gradientRansacDetection(gray, w, h) {
     var ordered = orderCorners(corners);
     if (!validateQuad(ordered, w, h)) continue;
 
-    return {
-      tl: { x: Math.max(0, Math.min(1, ordered[0][0] / w)), y: Math.max(0, Math.min(1, ordered[0][1] / h)) },
-      tr: { x: Math.max(0, Math.min(1, ordered[1][0] / w)), y: Math.max(0, Math.min(1, ordered[1][1] / h)) },
-      br: { x: Math.max(0, Math.min(1, ordered[2][0] / w)), y: Math.max(0, Math.min(1, ordered[2][1] / h)) },
-      bl: { x: Math.max(0, Math.min(1, ordered[3][0] / w)), y: Math.max(0, Math.min(1, ordered[3][1] / h)) },
-    };
+    return normalizeQuad(ordered, w, h);
   }
   return null;
 }
@@ -1124,6 +1107,12 @@ function processImage(base64, corners, mode) {
     var dh = Math.round(Math.max(dist(tl,bl), dist(tr,br)));
     dw = Math.max(dw, 100);
     dh = Math.max(dh, 100);
+    var maxDim = 3000;
+    if (dw > maxDim || dh > maxDim) {
+      var dimScale = maxDim / Math.max(dw, dh);
+      dw = Math.round(dw * dimScale);
+      dh = Math.round(dh * dimScale);
+    }
 
     var srcPts = [tl, tr, br, bl];
     var dstPts = [[0,0],[dw,0],[dw,dh],[0,dh]];

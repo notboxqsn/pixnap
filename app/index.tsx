@@ -66,6 +66,39 @@ export default function ScanScreen() {
   const [langModalVisible, setLangModalVisible] = useState(false);
   const base64Ref = useRef<string | null>(null);
 
+  const handleAssetPicked = useCallback(async (asset: ImagePicker.ImagePickerAsset) => {
+    setImageUri(asset.uri);
+    setImageSize({ width: asset.width, height: asset.height });
+    setCorners(DEFAULT_CORNERS);
+    setResult(null);
+    setNativeScan(false);
+    setStep('crop');
+    setDetecting(true);
+    try {
+      const file = new File(asset.uri);
+      const b64 = await file.base64();
+      base64Ref.current = b64;
+      let found = false;
+      try {
+        const nativeCorners = await detectDocument(b64);
+        if (nativeCorners) {
+          setCorners(nativeCorners);
+          found = true;
+        }
+      } catch {}
+      if (!found && processorRef.current) {
+        const detected = await processorRef.current.detect(b64);
+        if (detected) {
+          setCorners(detected);
+        }
+      }
+    } catch {
+      // detection failed silently, keep default corners
+    } finally {
+      setDetecting(false);
+    }
+  }, []);
+
   const handleNativeScan = useCallback(async () => {
     try {
       await checkAndShowAd();
@@ -74,42 +107,11 @@ export default function ScanScreen() {
         mediaTypes: ['images'],
       });
       if (pickerResult.canceled || !pickerResult.assets[0]) return;
-      const asset = pickerResult.assets[0];
-      setImageUri(asset.uri);
-      setImageSize({ width: asset.width, height: asset.height });
-      setCorners(DEFAULT_CORNERS);
-      setResult(null);
-      setNativeScan(false);
-      setStep('crop');
-      // Auto-detect document corners
-      setDetecting(true);
-      try {
-        const file = new File(asset.uri);
-        const b64 = await file.base64();
-        base64Ref.current = b64;
-        let found = false;
-        try {
-          const nativeCorners = await detectDocument(b64);
-          if (nativeCorners) {
-            setCorners(nativeCorners);
-            found = true;
-          }
-        } catch {}
-        if (!found && processorRef.current) {
-          const detected = await processorRef.current.detect(b64);
-          if (detected) {
-            setCorners(detected);
-          }
-        }
-      } catch {
-        // detection failed silently, keep default corners
-      } finally {
-        setDetecting(false);
-      }
+      await handleAssetPicked(pickerResult.assets[0]);
     } catch (e: any) {
       Alert.alert(t('scanFailed'), e.message || t('scanFailedMsg'));
     }
-  }, [t]);
+  }, [t, handleAssetPicked]);
 
   const handlePickLibrary = useCallback(async () => {
     try {
@@ -119,42 +121,11 @@ export default function ScanScreen() {
         mediaTypes: ['images'],
       });
       if (pickerResult.canceled || !pickerResult.assets[0]) return;
-      const asset = pickerResult.assets[0];
-      setImageUri(asset.uri);
-      setImageSize({ width: asset.width, height: asset.height });
-      setCorners(DEFAULT_CORNERS);
-      setResult(null);
-      setNativeScan(false);
-      setStep('crop');
-      // Auto-detect document corners using Apple Vision framework
-      setDetecting(true);
-      try {
-        const file = new File(asset.uri);
-        const b64 = await file.base64();
-        base64Ref.current = b64;
-        let found = false;
-        try {
-          const nativeCorners = await detectDocument(b64);
-          if (nativeCorners) {
-            setCorners(nativeCorners);
-            found = true;
-          }
-        } catch {}
-        if (!found && processorRef.current) {
-          const detected = await processorRef.current.detect(b64);
-          if (detected) {
-            setCorners(detected);
-          }
-        }
-      } catch {
-        // detection failed silently, keep default corners
-      } finally {
-        setDetecting(false);
-      }
+      await handleAssetPicked(pickerResult.assets[0]);
     } catch (e: any) {
       Alert.alert(t('error'), e.message || t('pickImageFailed'));
     }
-  }, [t]);
+  }, [t, handleAssetPicked]);
 
   const doProcess = useCallback(async () => {
     if (!imageUri || !processorRef.current) return;
