@@ -35,7 +35,8 @@
         "READ_EXTERNAL_STORAGE",
         "com.google.android.gms.permission.AD_ID"
       ],
-      "package": "me.pixnap"
+      "package": "me.pixnap",
+      "versionCode": 3
     },
     "web": {
       "favicon": "./assets/favicon.png"

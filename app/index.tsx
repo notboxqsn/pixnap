@@ -6,7 +6,6 @@ import {
   Image,
   Alert,
   ActivityIndicator,
-  ScrollView,
   TouchableOpacity,
   useColorScheme,
   Modal,
@@ -25,6 +24,7 @@ import { generatePdf } from '@/services/pdfService';
 import { checkAndShowAd } from '@/services/adService';
 import { detectDocument } from '@/modules/document-detection/src';
 import { SUPPORTED_LANGUAGES, changeLanguage } from '@/i18n';
+import ZoomableImage from '@/components/ZoomableImage';
 import type { ScannerCorners, EnhanceMode, ScanResult } from '@/types';
 
 type Step = 'camera' | 'crop' | 'preview';
@@ -409,28 +409,12 @@ export default function ScanScreen() {
   // ── Preview step ──
   const renderPreviewStep = () => (
     <View style={styles.flex}>
-      <ScrollView
-        style={styles.flex}
-        contentContainerStyle={styles.previewScrollContent}
-        maximumZoomScale={3}
-        minimumZoomScale={1}
-      >
-        {result && (
-          <>
-            <Text style={{ color: '#f00', fontSize: 13, marginBottom: 8, textAlign: 'center' }}>
-              {t('captureInfo', { inW: imageSize.width, inH: imageSize.height, outW: result.width, outH: result.height })}
-            </Text>
-            <Image
-              source={{ uri: `data:image/png;base64,${result.base64}` }}
-              style={{
-                width: '100%',
-                aspectRatio: result.width / result.height,
-              }}
-              resizeMode="contain"
-            />
-          </>
-        )}
-      </ScrollView>
+      {result && (
+        <ZoomableImage
+          uri={`data:image/png;base64,${result.base64}`}
+          aspectRatio={result.width / result.height}
+        />
+      )}
 
       <View style={[styles.controlPanel, { backgroundColor: Colors[theme].cardBackground }]}>
         <View style={styles.actionRow}>
@@ -531,7 +515,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   actionBtnText: { fontSize: 16, fontWeight: '600' },
-  previewScrollContent: { padding: 16 },
   processingOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 100,

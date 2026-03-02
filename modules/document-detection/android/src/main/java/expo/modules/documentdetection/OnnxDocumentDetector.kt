@@ -90,6 +90,7 @@ object OnnxDocumentDetector {
 
     val heatmapData = FloatArray((shape[0] * shape[1] * shape[2] * shape[3]).toInt())
     heatmapTensor.floatBuffer.get(heatmapData)
+    heatmapTensor.close()
     results.close()
 
     val elapsed = System.currentTimeMillis() - startTime

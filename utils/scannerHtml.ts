@@ -23,12 +23,14 @@ export function getScannerHtml(): string {
 // ── Gaussian elimination for solving Ax = b ──
 function solve(A, b) {
   var n = b.length;
+  // augmented matrix
   var M = [];
   for (var i = 0; i < n; i++) {
     M[i] = A[i].slice();
     M[i].push(b[i]);
   }
   for (var col = 0; col < n; col++) {
+    // pivot
     var maxRow = col;
     for (var row = col + 1; row < n; row++) {
       if (Math.abs(M[row][col]) > Math.abs(M[maxRow][col])) maxRow = row;
@@ -49,8 +51,9 @@ function solve(A, b) {
   return x;
 }
 
-// ── Compute 3x3 homography mapping src quad -> dst rect (DLT) ──
+// ── Compute 3×3 homography mapping src quad -> dst rect (DLT) ──
 function computeHomography(srcPts, dstPts) {
+  // srcPts/dstPts: [[x0,y0],[x1,y1],[x2,y2],[x3,y3]]
   var A = [], b = [];
   for (var i = 0; i < 4; i++) {
     var sx = srcPts[i][0], sy = srcPts[i][1];
@@ -62,10 +65,11 @@ function computeHomography(srcPts, dstPts) {
   }
   var h = solve(A, b);
   if (!h) return null;
+  // H = [[h0,h1,h2],[h3,h4,h5],[h6,h7,1]]
   return [h[0],h[1],h[2],h[3],h[4],h[5],h[6],h[7],1];
 }
 
-// ── Invert 3x3 matrix ──
+// ── Invert 3×3 matrix ──
 function invert3x3(m) {
   var a=m[0],b=m[1],c=m[2],d=m[3],e=m[4],f=m[5],g=m[6],h=m[7],k=m[8];
   var det = a*(e*k-f*h) - b*(d*k-f*g) + c*(d*h-e*g);
@@ -122,6 +126,7 @@ function warp(srcData, sw, sh, H_inv, dw, dh) {
 
 // ── Adaptive threshold (integral image) ──
 function adaptiveThreshold(gray, w, h, blockSize, C) {
+  // Build integral image
   var integral = new Float64Array((w+1)*(h+1));
   for (var y = 0; y < h; y++) {
     var rowSum = 0;
@@ -168,6 +173,7 @@ function enhanceBW(data, w, h) {
 
 function enhanceGray(data, w, h) {
   var gray = toGray(data, w, h);
+  // percentile stretch 1%–99%
   var sorted = Array.from(gray).sort(function(a,b){return a-b;});
   var lo = sorted[Math.floor(sorted.length*0.01)];
   var hi = sorted[Math.floor(sorted.length*0.99)];
@@ -191,7 +197,8 @@ function enhanceColor(data, w, h) {
     for (var i = 0; i < n; i++) {
       var v = ((ch[i]-lo)/range)*255;
       v = v < 0 ? 0 : v > 255 ? 255 : v;
-      v = Math.round(Math.pow(v/255, 0.85)*255);
+      // gamma correction (0.85)
+      v = Math.round(v);
       data[i*4+c] = v;
     }
   }
@@ -925,33 +932,13 @@ function gradientRansacDetection(gray, w, h) {
   if (allMags.length < 50) return null;
   allMags.sort(function(a, b) { return b - a; });
 
-  // Precompute brightness contrast across each edge pixel
-  var contrast = new Float64Array(w * h);
-  var sampleR = 3;
-  for (var cy = sampleR; cy < h - sampleR; cy++) {
-    for (var cx = sampleR; cx < w - sampleR; cx++) {
-      if (nms[cy * w + cx] <= 0) continue;
-      var theta = grad.dir[cy * w + cx];
-      var cosT = Math.cos(theta), sinT = Math.sin(theta);
-      var nx1 = Math.max(0, Math.min(w - 1, Math.round(cx + cosT * sampleR)));
-      var ny1 = Math.max(0, Math.min(h - 1, Math.round(cy + sinT * sampleR)));
-      var nx2 = Math.max(0, Math.min(w - 1, Math.round(cx - cosT * sampleR)));
-      var ny2 = Math.max(0, Math.min(h - 1, Math.round(cy - sinT * sampleR)));
-      contrast[cy * w + cx] = Math.abs(blurred[ny1 * w + nx1] - blurred[ny2 * w + nx2]);
-    }
-  }
-
-  var contrastThresholds = [30, 15, 0];
-  for (var cti = 0; cti < contrastThresholds.length; cti++) {
-  var contrastTh = contrastThresholds[cti];
-  var threshFracs = [0.10, 0.20, 0.35, 0.50];
+  var threshFracs = [0.10, 0.20, 0.35];
   for (var ti = 0; ti < threshFracs.length; ti++) {
     var magTh = allMags[Math.min(Math.floor(allMags.length * threshFracs[ti]), allMags.length - 1)];
     var pixels = [];
-    for (var py = sampleR; py < h - sampleR; py++) {
-      for (var px = sampleR; px < w - sampleR; px++) {
+    for (var py = 1; py < h - 1; py++) {
+      for (var px = 1; px < w - 1; px++) {
         if (nms[py * w + px] < magTh) continue;
-        if (contrast[py * w + px] < contrastTh) continue;
         var gd = grad.dir[py * w + px];
         if (gd < 0) gd += Math.PI;
         var bin = Math.floor(gd * 180 / Math.PI);
@@ -997,67 +984,68 @@ function gradientRansacDetection(gray, w, h) {
 
     var dThr = Math.max(2, Math.min(w, h) * 0.006);
     var groups = [g1, g2];
-    var allLines = [[], []];
-    var groupsOk = true;
+    var pairs = [null, null];
+    var pairsOk = true;
 
     for (var gi = 0; gi < 2; gi++) {
       var grp = groups[gi];
+      // Find up to 5 lines by iterative RANSAC
+      var lines = [];
       var rem = grp.slice();
-      for (var li = 0; li < 8 && rem.length > 10; li++) {
-        var ln = ransacLine(rem, 1500, dThr);
+      for (var li = 0; li < 5 && rem.length > 10; li++) {
+        var ln = ransacLine(rem, 1200, dThr);
         if (!ln || ln.count < 5) break;
-        allLines[gi].push(ln);
+        lines.push(ln);
         var newRem = [];
         for (var ri = 0; ri < rem.length; ri++) {
           if (!ln.inlierMask[ri]) newRem.push(rem[ri]);
         }
         rem = newRem;
       }
-      if (allLines[gi].length < 2) { groupsOk = false; break; }
-    }
-    if (!groupsOk) continue;
-
-    // Try ALL combinations of (2 lines from group0) x (2 lines from group1)
-    // Pick the largest valid quad
-    var margin = Math.max(w, h) * 0.15;
-    var bestQuadArea = 0, bestOrdered = null;
-    var L0 = allLines[0], L1 = allLines[1];
-    for (var i0 = 0; i0 < L0.length; i0++) {
-      for (var j0 = i0 + 1; j0 < L0.length; j0++) {
-        for (var i1 = 0; i1 < L1.length; i1++) {
-          for (var j1 = i1 + 1; j1 < L1.length; j1++) {
-            var c00 = intersectLineEq(L0[i0], L1[i1]);
-            var c01 = intersectLineEq(L0[i0], L1[j1]);
-            var c10 = intersectLineEq(L0[j0], L1[i1]);
-            var c11 = intersectLineEq(L0[j0], L1[j1]);
-            if (!c00 || !c01 || !c10 || !c11) continue;
-            var corners = [c00, c01, c10, c11];
-            var inBounds = true;
-            for (var ci = 0; ci < 4; ci++) {
-              if (corners[ci][0] < -margin || corners[ci][0] > w + margin ||
-                  corners[ci][1] < -margin || corners[ci][1] > h + margin) {
-                inBounds = false; break;
-              }
-            }
-            if (!inBounds) continue;
-            var ordered = orderCorners(corners);
-            if (!validateQuad(ordered, w, h)) continue;
-            var area = contourArea(ordered);
-            if (area > bestQuadArea) { bestQuadArea = area; bestOrdered = ordered; }
-          }
+      if (lines.length < 2) { pairsOk = false; break; }
+      // Select widest-separated pair (distance from one line to other's centroid)
+      var bestSep = 0, bestPair = null;
+      for (var i = 0; i < lines.length; i++) {
+        for (var j = i + 1; j < lines.length; j++) {
+          var sep = Math.abs(lines[i].a * lines[j].cx + lines[i].b * lines[j].cy + lines[i].c);
+          if (sep > bestSep) { bestSep = sep; bestPair = [lines[i], lines[j]]; }
         }
       }
+      if (!bestPair || bestSep < Math.min(w, h) * 0.10) { pairsOk = false; break; }
+      pairs[gi] = bestPair;
     }
+    if (!pairsOk) continue;
 
-    if (bestOrdered) {
-      return {
-        tl: { x: Math.max(0, Math.min(1, bestOrdered[0][0] / w)), y: Math.max(0, Math.min(1, bestOrdered[0][1] / h)) },
-        tr: { x: Math.max(0, Math.min(1, bestOrdered[1][0] / w)), y: Math.max(0, Math.min(1, bestOrdered[1][1] / h)) },
-        br: { x: Math.max(0, Math.min(1, bestOrdered[2][0] / w)), y: Math.max(0, Math.min(1, bestOrdered[2][1] / h)) },
-        bl: { x: Math.max(0, Math.min(1, bestOrdered[3][0] / w)), y: Math.max(0, Math.min(1, bestOrdered[3][1] / h)) },
-      };
+    // Intersect: pairs[0] x pairs[1] -> 4 corners
+    var corners = [];
+    var allOk = true;
+    for (var i = 0; i < 2 && allOk; i++) {
+      for (var j = 0; j < 2 && allOk; j++) {
+        var pt = intersectLineEq(pairs[0][i], pairs[1][j]);
+        if (!pt) { allOk = false; } else { corners.push(pt); }
+      }
     }
-  }
+    if (!allOk || corners.length !== 4) continue;
+
+    var margin = Math.max(w, h) * 0.15;
+    var inBounds = true;
+    for (var i = 0; i < 4; i++) {
+      if (corners[i][0] < -margin || corners[i][0] > w + margin ||
+          corners[i][1] < -margin || corners[i][1] > h + margin) {
+        inBounds = false; break;
+      }
+    }
+    if (!inBounds) continue;
+
+    var ordered = orderCorners(corners);
+    if (!validateQuad(ordered, w, h)) continue;
+
+    return {
+      tl: { x: Math.max(0, Math.min(1, ordered[0][0] / w)), y: Math.max(0, Math.min(1, ordered[0][1] / h)) },
+      tr: { x: Math.max(0, Math.min(1, ordered[1][0] / w)), y: Math.max(0, Math.min(1, ordered[1][1] / h)) },
+      br: { x: Math.max(0, Math.min(1, ordered[2][0] / w)), y: Math.max(0, Math.min(1, ordered[2][1] / h)) },
+      bl: { x: Math.max(0, Math.min(1, ordered[3][0] / w)), y: Math.max(0, Math.min(1, ordered[3][1] / h)) },
+    };
   }
   return null;
 }
@@ -1082,20 +1070,8 @@ function detectDocument(base64) {
         ctx.drawImage(img, 0, 0, w, h);
         var data = ctx.getImageData(0, 0, w, h).data;
         var gray = toGray(data, w, h);
-        // Primary: gradient-direction RANSAC (robust for tilted documents) - try higher res first
-        var quad = null;
-        if (Math.max(ow, oh) > 800) {
-          var s2 = 800 / Math.max(ow, oh);
-          var w2 = Math.round(ow * s2), h2 = Math.round(oh * s2);
-          canvas.width = w2; canvas.height = h2;
-          ctx.drawImage(img, 0, 0, w2, h2);
-          var data2 = ctx.getImageData(0, 0, w2, h2).data;
-          var gray2 = toGray(data2, w2, h2);
-          quad = gradientRansacDetection(gray2, w2, h2);
-        }
-        if (!quad) {
-          quad = gradientRansacDetection(gray, w, h);
-        }
+        // Primary: gradient-direction RANSAC (robust for tilted documents)
+        var quad = gradientRansacDetection(gray, w, h);
         if (!quad) {
           // Secondary: brightness segmentation
           quad = segmentBasedDetection(gray, w, h);
@@ -1120,7 +1096,6 @@ function detectDocument(base64) {
   });
 }
 
-// ── Main process handler ──
 function decodeBase64Image(base64) {
   var binary = atob(base64);
   var bytes = new Uint8Array(binary.length);
@@ -1129,6 +1104,7 @@ function decodeBase64Image(base64) {
   return createImageBitmap(blob);
 }
 
+// ── Main process handler ──
 function processImage(base64, corners, mode) {
   return decodeBase64Image(base64).then(function(bmp) {
     var sw = bmp.width, sh = bmp.height;
@@ -1251,6 +1227,7 @@ window.addEventListener('message', function(e) {
         .catch(function(err) {
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type: 'error',
+            context: 'process',
             message: err.message || 'Processing failed'
           }));
         });
@@ -1260,6 +1237,12 @@ window.addEventListener('message', function(e) {
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type: 'corners',
             corners: corners
+          }));
+        })
+        .catch(function() {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'corners',
+            corners: null
           }));
         });
     } else if (msg.type === 'previewFilters') {
@@ -1275,6 +1258,7 @@ window.addEventListener('message', function(e) {
         .catch(function(err) {
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type: 'error',
+            context: 'previewFilters',
             message: err.message || 'Preview generation failed'
           }));
         });
@@ -1287,6 +1271,7 @@ window.addEventListener('message', function(e) {
   }
 });
 
+// Also listen on document for Android
 document.addEventListener('message', function(e) {
   window.dispatchEvent(new MessageEvent('message', { data: e.data }));
 });

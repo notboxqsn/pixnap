@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme, View, ActivityIndicator } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { I18nextProvider, useTranslation } from 'react-i18next';
 import i18n, { i18nReady } from '@/i18n';
 import Colors from '@/constants/Colors';
@@ -50,8 +51,10 @@ export default function RootLayout() {
   }
 
   return (
-    <I18nextProvider i18n={i18n}>
-      <RootStack />
-    </I18nextProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <I18nextProvider i18n={i18n}>
+        <RootStack />
+      </I18nextProvider>
+    </GestureHandlerRootView>
   );
 }
