@@ -22,7 +22,10 @@
         "NSUserTrackingUsageDescription": "This allows Pixnap to show you relevant ads."
       },
       "bundleIdentifier": "me.pixnap",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
