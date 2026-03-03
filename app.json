@@ -21,7 +21,8 @@
         "NSPhotoLibraryAddUsageDescription": "需要相册权限来保存扫描的图片",
         "NSUserTrackingUsageDescription": "This allows Pixnap to show you relevant ads."
       },
-      "bundleIdentifier": "me.pixnap"
+      "bundleIdentifier": "me.pixnap",
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
