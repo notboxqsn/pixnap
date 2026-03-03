@@ -40,7 +40,7 @@
         "com.google.android.gms.permission.AD_ID"
       ],
       "package": "me.pixnap",
-      "versionCode": 3
+      "versionCode": 4
     },
     "web": {
       "favicon": "./assets/favicon.png"
