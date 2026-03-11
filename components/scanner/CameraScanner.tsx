@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   LayoutChangeEvent,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { File } from 'expo-file-system';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -42,6 +44,8 @@ export default function CameraScanner({
   const [permission, requestPermission] = useCameraPermissions();
   const [cameraReady, setCameraReady] = useState(false);
   const [flash, setFlash] = useState<'off' | 'on' | 'auto'>('off');
+  const [zoom, setZoom] = useState(0);
+  const savedZoom = useRef(0);
   const [detectedCorners, setDetectedCorners] = useState<ScannerCorners | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [layout, setLayout] = useState({ width: 0, height: 0 });
@@ -78,7 +82,9 @@ export default function CameraScanner({
       if (layout.width === 0 || layout.height === 0) return corners;
       const snapAR = snapW / snapH;
       const prevAR = layout.width / layout.height;
-      if (Math.abs(snapAR - prevAR) / Math.max(snapAR, prevAR) < 0.05) return corners;
+      const arDiff = Math.abs(snapAR - prevAR) / Math.max(snapAR, prevAR);
+      console.log(`[remap] snapAR=${snapAR.toFixed(3)} prevAR=${prevAR.toFixed(3)} diff=${(arDiff*100).toFixed(1)}%`);
+      if (arDiff < 0.05) return corners;
 
       const remap = (c: ScannerCorner): ScannerCorner => {
         if (snapAR > prevAR) {
@@ -115,6 +121,7 @@ export default function CameraScanner({
         } catch {}
 
         if (detected) {
+          console.log(`[detectLoop] snap: ${snap.width}x${snap.height}, layout: ${layout.width.toFixed(0)}x${layout.height.toFixed(0)}, raw tl:(${detected.tl.x.toFixed(3)},${detected.tl.y.toFixed(3)})`);
           // Aspect ratio correction
           detected = remapCornersForPreview(detected, snap.width, snap.height);
           // Temporal smoothing: lerp with previous corners
@@ -219,6 +226,15 @@ export default function CameraScanner({
   const flashIcon = flash === 'off' ? 'bolt' : flash === 'on' ? 'bolt' : 'bolt';
   const flashLabel = flash === 'off' ? 'OFF' : flash === 'on' ? 'ON' : 'AUTO';
 
+  const updateZoom = useCallback((scale: number) => {
+    const newZoom = Math.min(1, Math.max(0, savedZoom.current + (scale - 1) * 0.5));
+    setZoom(newZoom);
+  }, []);
+
+  const saveZoom = useCallback(() => {
+    savedZoom.current = zoom;
+  }, [zoom]);
+
   // Permission not granted
   if (!permission?.granted) {
     return (
@@ -237,6 +253,20 @@ export default function CameraScanner({
     );
   }
 
+  const pinchGesture = Gesture.Pinch()
+    .onUpdate((e) => {
+      'worklet';
+      runOnJS(updateZoom)(e.scale);
+    })
+    .onEnd(() => {
+      'worklet';
+      runOnJS(saveZoom)();
+    });
+
+  const composedGesture = pinchGesture;
+
+  const zoomLabel = `${(1 + zoom * 4).toFixed(1)}x`;
+
   return (
     <View style={styles.container}>
       {/* Camera preview */}
@@ -246,6 +276,7 @@ export default function CameraScanner({
           style={StyleSheet.absoluteFill}
           facing="back"
           flash={flash}
+          zoom={zoom}
           animateShutter={false}
           onCameraReady={onCameraReady}
           pictureSize={pictureSize}
@@ -269,12 +300,10 @@ export default function CameraScanner({
           </Svg>
         )}
 
-        {/* Tap-to-capture overlay */}
-        <TouchableOpacity
-          style={StyleSheet.absoluteFill}
-          activeOpacity={1}
-          onPress={capturePhoto}
-        />
+        {/* Pinch-to-zoom + tap-to-capture */}
+        <GestureDetector gesture={composedGesture}>
+          <View style={StyleSheet.absoluteFill} />
+        </GestureDetector>
 
         {/* Hint text */}
         <View style={styles.hintWrap} pointerEvents="none">
@@ -286,6 +315,13 @@ export default function CameraScanner({
                 : t('aimAtDoc')}
           </Text>
         </View>
+
+        {/* Zoom indicator */}
+        {zoom > 0.01 && (
+          <View style={styles.zoomIndicator} pointerEvents="none">
+            <Text style={styles.zoomIndicatorText}>{zoomLabel}</Text>
+          </View>
+        )}
       </View>
 
       {/* Bottom controls */}
@@ -383,6 +419,20 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     overflow: 'hidden',
+  },
+  zoomIndicator: {
+    position: 'absolute',
+    bottom: 12,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  zoomIndicatorText: {
+    color: '#ffd700',
+    fontSize: 14,
+    fontWeight: '700',
   },
   bottomBar: {
     flexDirection: 'row',

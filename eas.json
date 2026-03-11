@@ -4,6 +4,13 @@
     "appVersionSource": "local"
   },
   "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "credentialsSource": "remote"
+      }
+    },
     "production": {
       "android": {
         "buildType": "app-bundle",

@@ -54,83 +54,109 @@ function getEditorHtml(): string {
 <script>
 var canvas = document.getElementById('c');
 var ctx = canvas.getContext('2d');
-var img = null;
-var currentRotation = 0;
+var img = new Image();
+var imgLoaded = false;
+var imgChunks = [];
+var imgChunkTotal = 0;
+var MAX_DIM = 2048;
 
 function sendMsg(obj) {
   window.ReactNativeWebView.postMessage(JSON.stringify(obj));
 }
 
-document.addEventListener('message', handleMessage);
-window.addEventListener('message', handleMessage);
-
-function handleMessage(e) {
-  try {
-    var msg = JSON.parse(e.data);
-    if (msg.type === 'load') {
-      loadImage(msg.base64);
-    } else if (msg.type === 'apply') {
-      applyEdits(msg);
-    }
-  } catch(err) {
-    sendMsg({type:'error', message: err.message || 'Unknown error'});
+function receiveImageChunk(index, total, data) {
+  imgChunkTotal = total;
+  imgChunks[index] = data;
+  var count = 0;
+  for (var i = 0; i < total; i++) { if (imgChunks[i]) count++; }
+  if (count === total) {
+    var b64 = imgChunks.join('');
+    imgChunks = [];
+    var mime = (b64.charAt(0) === 'i') ? 'image/png' : 'image/jpeg';
+    img.onload = function() {
+      imgLoaded = true;
+      sendMsg({type:'ready', width: img.width, height: img.height});
+    };
+    img.onerror = function() {
+      sendMsg({type:'error', message:'Failed to load image from base64'});
+    };
+    img.src = 'data:' + mime + ';base64,' + b64;
   }
 }
 
-function loadImage(b64) {
-  img = new Image();
-  img.onload = function() {
-    sendMsg({type:'loaded', width: img.width, height: img.height});
-  };
-  img.onerror = function() {
-    sendMsg({type:'error', message:'Failed to load image'});
-  };
-  img.src = 'data:image/png;base64,' + b64;
+function applyEdits(rotation, brightness, contrast, saturation, warmth, sepia, grayscale) {
+  if (!imgLoaded) { sendMsg({type:'error',message:'Image not loaded yet'}); return; }
+
+  try {
+    var scale = 1;
+    if (img.width > MAX_DIM || img.height > MAX_DIM) {
+      scale = MAX_DIM / Math.max(img.width, img.height);
+    }
+    var sw = Math.round(img.width * scale);
+    var sh = Math.round(img.height * scale);
+
+    var isRotated = (rotation === 90 || rotation === 270);
+    var w = isRotated ? sh : sw;
+    var h = isRotated ? sw : sh;
+
+    canvas.width = w;
+    canvas.height = h;
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+    ctx.translate(w / 2, h / 2);
+    ctx.rotate(rotation * Math.PI / 180);
+    ctx.drawImage(img, -sw / 2, -sh / 2, sw, sh);
+    ctx.restore();
+
+    var needsFilter = brightness !== 0 || contrast !== 0 || saturation !== 0 || warmth !== 0 || sepia > 0 || grayscale > 0;
+    if (needsFilter) {
+      var imageData = ctx.getImageData(0, 0, w, h);
+      var d = imageData.data;
+      var len = d.length;
+      var bF = 1 + brightness / 100;
+      var cF = 1 + contrast / 100;
+      var sF = 1 + saturation / 100;
+      var wS = warmth * 0.5;
+      var gF = grayscale / 100;
+      var sepF = sepia / 100;
+
+      for (var p = 0; p < len; p += 4) {
+        var r = d[p], g = d[p+1], b = d[p+2];
+        if (bF !== 1) { r *= bF; g *= bF; b *= bF; }
+        if (cF !== 1) { r = (r - 128) * cF + 128; g = (g - 128) * cF + 128; b = (b - 128) * cF + 128; }
+        if (sF !== 1) { var gr = 0.2126 * r + 0.7152 * g + 0.0722 * b; r = gr + (r - gr) * sF; g = gr + (g - gr) * sF; b = gr + (b - gr) * sF; }
+        if (wS !== 0) { r += wS; b -= wS; }
+        if (gF > 0) { var gv = 0.2126 * r + 0.7152 * g + 0.0722 * b; r = r + (gv - r) * gF; g = g + (gv - g) * gF; b = b + (gv - b) * gF; }
+        if (sepF > 0) { var sr = r*0.393+g*0.769+b*0.189; var sg = r*0.349+g*0.686+b*0.168; var sb = r*0.272+g*0.534+b*0.131; r = r+(sr-r)*sepF; g = g+(sg-g)*sepF; b = b+(sb-b)*sepF; }
+        d[p] = r < 0 ? 0 : r > 255 ? 255 : r;
+        d[p+1] = g < 0 ? 0 : g > 255 ? 255 : g;
+        d[p+2] = b < 0 ? 0 : b > 255 ? 255 : b;
+      }
+      ctx.putImageData(imageData, 0, 0);
+    }
+
+    var dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    var b64 = dataUrl.replace(/^data:image\\/[^;]+;base64,/, '');
+    if (!b64 || b64.length < 100) {
+      sendMsg({type:'error', message:'toDataURL returned empty result'});
+      return;
+    }
+
+    var CHUNK = 512000;
+    if (b64.length > CHUNK) {
+      var total = Math.ceil(b64.length / CHUNK);
+      for (var i = 0; i < total; i++) {
+        sendMsg({type:'chunk', index: i, total: total, data: b64.substr(i * CHUNK, CHUNK), width: w, height: h});
+      }
+    } else {
+      sendMsg({type:'result', base64: b64, width: w, height: h});
+    }
+  } catch(e) {
+    sendMsg({type:'error', message:'applyEdits: ' + e.message});
+  }
 }
 
-function applyEdits(params) {
-  if (!img) { sendMsg({type:'error',message:'No image loaded'}); return; }
-  var rotation = params.rotation || 0;
-  var brightness = params.brightness || 0;
-  var contrast = params.contrast || 0;
-  var saturation = params.saturation || 0;
-  var warmth = params.warmth || 0;
-  var sepia = params.sepia || 0;
-  var grayscale = params.grayscale || 0;
-
-  var isRotated = (rotation === 90 || rotation === 270);
-  var w = isRotated ? img.height : img.width;
-  var h = isRotated ? img.width : img.height;
-
-  canvas.width = w;
-  canvas.height = h;
-
-  ctx.clearRect(0, 0, w, h);
-  ctx.save();
-
-  // Build CSS filter string
-  var filters = [];
-  filters.push('brightness(' + (1 + brightness / 100) + ')');
-  filters.push('contrast(' + (1 + contrast / 100) + ')');
-  filters.push('saturate(' + (1 + saturation / 100) + ')');
-  if (sepia > 0) filters.push('sepia(' + (sepia / 100) + ')');
-  if (grayscale > 0) filters.push('grayscale(' + (grayscale / 100) + ')');
-  if (warmth !== 0) filters.push('hue-rotate(' + warmth + 'deg)');
-  ctx.filter = filters.join(' ');
-
-  // Apply rotation
-  ctx.translate(w / 2, h / 2);
-  ctx.rotate(rotation * Math.PI / 180);
-  ctx.drawImage(img, -img.width / 2, -img.height / 2);
-
-  ctx.restore();
-
-  var dataUrl = canvas.toDataURL('image/png');
-  var b64 = dataUrl.replace(/^data:image\\/png;base64,/, '');
-  sendMsg({type:'result', base64: b64, width: w, height: h});
-}
-
-sendMsg({type:'ready'});
+sendMsg({type:'webview_init'});
 </script></body></html>`;
 }
 
@@ -142,6 +168,8 @@ export default function ImageEditor({ result, onDone, onCancel }: ImageEditorPro
     resolve: (r: ScanResult) => void;
     reject: (e: Error) => void;
   } | null>(null);
+  const chunksRef = useRef<string[]>([]);
+  const chunkMetaRef = useRef<{ total: number; width: number; height: number }>({ total: 0, width: 0, height: 0 });
 
   const [activeTab, setActiveTab] = useState<ToolTab>('rotate');
   const [rotation, setRotation] = useState(0);
@@ -152,7 +180,7 @@ export default function ImageEditor({ result, onDone, onCancel }: ImageEditorPro
   const [sepia, setSepia] = useState(0);
   const [grayscale, setGrayscale] = useState(0);
   const [activeFilter, setActiveFilter] = useState('original');
-  const [previewUri, setPreviewUri] = useState(`data:image/png;base64,${result.base64}`);
+  const [previewUri, setPreviewUri] = useState(`data:image/jpeg;base64,${result.base64}`);
   const [previewSize, setPreviewSize] = useState({ width: result.width, height: result.height });
   const [processing, setProcessing] = useState(false);
   const [webviewReady, setWebviewReady] = useState(false);
@@ -161,17 +189,8 @@ export default function ImageEditor({ result, onDone, onCancel }: ImageEditorPro
   const applyEdits = useCallback(() => {
     if (!webViewRef.current || !webviewReady) return;
     setProcessing(true);
-    const payload = JSON.stringify({
-      type: 'apply',
-      rotation,
-      brightness,
-      contrast,
-      saturation,
-      warmth,
-      sepia,
-      grayscale,
-    });
-    webViewRef.current.postMessage(payload);
+    const js = `applyEdits(${rotation},${brightness},${contrast},${saturation},${warmth},${sepia},${grayscale}); true;`;
+    webViewRef.current.injectJavaScript(js);
   }, [rotation, brightness, contrast, saturation, warmth, sepia, grayscale, webviewReady]);
 
   // Apply edits whenever params change (debounced via useEffect)
@@ -185,42 +204,70 @@ export default function ImageEditor({ result, onDone, onCancel }: ImageEditorPro
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [rotation, brightness, contrast, saturation, warmth, sepia, grayscale, webviewReady]);
 
+  const sendImageToWebView = useCallback(() => {
+    if (!webViewRef.current) return;
+    const b64 = result.base64;
+    const CHUNK = 100000;
+    const total = Math.ceil(b64.length / CHUNK);
+    for (let i = 0; i < total; i++) {
+      const chunk = b64.substring(i * CHUNK, (i + 1) * CHUNK);
+      webViewRef.current.injectJavaScript(`receiveImageChunk(${i},${total},'${chunk}'); true;`);
+    }
+  }, [result.base64]);
+
   const onMessage = useCallback((event: WebViewMessageEvent) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data);
-      if (msg.type === 'ready') {
+      if (msg.type === 'debug') {
+        console.log(`[ImageEditor] WebView: ${msg.message}`);
+      } else if (msg.type === 'webview_init') {
+        console.log('[ImageEditor] WebView init, sending image...');
+        sendImageToWebView();
+      } else if (msg.type === 'ready') {
+        console.log(`[ImageEditor] Image ready: ${msg.width}x${msg.height}`);
         setWebviewReady(true);
-        // Load image
-        if (webViewRef.current) {
-          webViewRef.current.postMessage(JSON.stringify({
-            type: 'load',
-            base64: result.base64,
-          }));
-        }
       } else if (msg.type === 'loaded') {
         loadedRef.current = true;
       } else if (msg.type === 'result') {
-        setPreviewUri(`data:image/png;base64,${msg.base64}`);
+        setPreviewUri(`data:image/jpeg;base64,${msg.base64}`);
         setPreviewSize({ width: msg.width, height: msg.height });
         setProcessing(false);
-        // If there's a pending done request, resolve it
         if (pendingRef.current) {
-          pendingRef.current.resolve({
-            base64: msg.base64,
-            width: msg.width,
-            height: msg.height,
-          });
+          pendingRef.current.resolve({ base64: msg.base64, width: msg.width, height: msg.height });
           pendingRef.current = null;
         }
+      } else if (msg.type === 'chunk') {
+        if (msg.index === 0) {
+          chunksRef.current = new Array(msg.total);
+          chunkMetaRef.current = { total: msg.total, width: msg.width, height: msg.height };
+        }
+        chunksRef.current[msg.index] = msg.data;
+        const allReceived = chunksRef.current.length === chunkMetaRef.current.total &&
+          chunksRef.current.every((c) => c !== undefined);
+        if (allReceived) {
+          const fullBase64 = chunksRef.current.join('');
+          const { width, height } = chunkMetaRef.current;
+          setPreviewUri(`data:image/jpeg;base64,${fullBase64}`);
+          setPreviewSize({ width, height });
+          setProcessing(false);
+          if (pendingRef.current) {
+            pendingRef.current.resolve({ base64: fullBase64, width, height });
+            pendingRef.current = null;
+          }
+          chunksRef.current = [];
+        }
       } else if (msg.type === 'error') {
+        console.error(`[ImageEditor] WebView error: ${msg.message}`);
         setProcessing(false);
         if (pendingRef.current) {
           pendingRef.current.reject(new Error(msg.message));
           pendingRef.current = null;
         }
       }
-    } catch {}
-  }, [result.base64]);
+    } catch (e) {
+      console.error('[ImageEditor] onMessage parse error:', e);
+    }
+  }, [result.base64, sendImageToWebView]);
 
   const handleDone = useCallback(() => {
     // Apply final edits and return
@@ -229,17 +276,8 @@ export default function ImageEditor({ result, onDone, onCancel }: ImageEditorPro
     const promise = new Promise<ScanResult>((resolve, reject) => {
       pendingRef.current = { resolve, reject };
     });
-    const payload = JSON.stringify({
-      type: 'apply',
-      rotation,
-      brightness,
-      contrast,
-      saturation,
-      warmth,
-      sepia,
-      grayscale,
-    });
-    webViewRef.current.postMessage(payload);
+    const js = `applyEdits(${rotation},${brightness},${contrast},${saturation},${warmth},${sepia},${grayscale}); true;`;
+    webViewRef.current.injectJavaScript(js);
     promise.then((edited) => {
       setProcessing(false);
       onDone(edited);
@@ -478,8 +516,8 @@ export default function ImageEditor({ result, onDone, onCancel }: ImageEditorPro
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  hidden: { width: 0, height: 0, overflow: 'hidden', position: 'absolute' },
-  webview: { width: 1, height: 1 },
+  hidden: { width: 300, height: 300, overflow: 'hidden', position: 'absolute', left: -9999, top: -9999 },
+  webview: { width: 300, height: 300 },
   previewArea: {
     flex: 1,
     justifyContent: 'center',

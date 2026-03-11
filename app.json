@@ -18,7 +18,7 @@
       "infoPlist": {
         "NSCameraUsageDescription": "需要相机权限来拍摄票据",
         "NSPhotoLibraryUsageDescription": "需要相册权限来选择票据图片",
-        "NSPhotoLibraryAddUsageDescription": "需要相册权限来保存扫描的图片",
+        "NSPhotoLibraryAddUsageDescription": "Pixnap needs access to save scanned images to your photo library.",
         "NSUserTrackingUsageDescription": "This allows Pixnap to show you relevant ads."
       },
       "bundleIdentifier": "me.pixnap",
