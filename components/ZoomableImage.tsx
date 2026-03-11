@@ -1,10 +1,11 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
+  runOnJS,
 } from 'react-native-reanimated';
 
 interface ZoomableImageProps {
@@ -14,7 +15,7 @@ interface ZoomableImageProps {
 }
 
 const MIN_SCALE = 1;
-const MAX_SCALE = 3;
+const MAX_SCALE = 5;
 
 export default function ZoomableImage({ uri, aspectRatio, children }: ZoomableImageProps) {
   const scale = useSharedValue(1);
@@ -23,14 +24,24 @@ export default function ZoomableImage({ uri, aspectRatio, children }: ZoomableIm
   const translateY = useSharedValue(0);
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
+  const focalX = useSharedValue(0);
+  const focalY = useSharedValue(0);
 
   const pinchGesture = Gesture.Pinch()
+    .onStart((e) => {
+      'worklet';
+      focalX.value = e.focalX;
+      focalY.value = e.focalY;
+    })
     .onUpdate((e) => {
-      scale.value = Math.min(MAX_SCALE, Math.max(MIN_SCALE, savedScale.value * e.scale));
+      'worklet';
+      const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, savedScale.value * e.scale));
+      scale.value = newScale;
     })
     .onEnd(() => {
+      'worklet';
       savedScale.value = scale.value;
-      if (scale.value <= 1) {
+      if (scale.value <= 1.05) {
         scale.value = withTiming(1);
         savedScale.value = 1;
         translateX.value = withTiming(0);
@@ -41,14 +52,16 @@ export default function ZoomableImage({ uri, aspectRatio, children }: ZoomableIm
     });
 
   const panGesture = Gesture.Pan()
-    .minPointers(2)
+    .minPointers(1)
     .onUpdate((e) => {
+      'worklet';
       if (savedScale.value > 1) {
         translateX.value = savedTranslateX.value + e.translationX;
         translateY.value = savedTranslateY.value + e.translationY;
       }
     })
     .onEnd(() => {
+      'worklet';
       savedTranslateX.value = translateX.value;
       savedTranslateY.value = translateY.value;
     });
@@ -56,23 +69,35 @@ export default function ZoomableImage({ uri, aspectRatio, children }: ZoomableIm
   const doubleTapGesture = Gesture.Tap()
     .numberOfTaps(2)
     .onEnd(() => {
-      scale.value = withTiming(1);
-      savedScale.value = 1;
-      translateX.value = withTiming(0);
-      translateY.value = withTiming(0);
-      savedTranslateX.value = 0;
-      savedTranslateY.value = 0;
+      'worklet';
+      if (savedScale.value > 1.1) {
+        scale.value = withTiming(1);
+        savedScale.value = 1;
+        translateX.value = withTiming(0);
+        translateY.value = withTiming(0);
+        savedTranslateX.value = 0;
+        savedTranslateY.value = 0;
+      } else {
+        scale.value = withTiming(2.5);
+        savedScale.value = 2.5;
+      }
     });
 
-  const composed = Gesture.Exclusive(doubleTapGesture, Gesture.Simultaneous(pinchGesture, panGesture));
+  const composed = Gesture.Exclusive(
+    doubleTapGesture,
+    Gesture.Simultaneous(pinchGesture, panGesture),
+  );
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-      { scale: scale.value },
-    ],
-  }));
+  const animatedStyle = useAnimatedStyle(() => {
+    'worklet';
+    return {
+      transform: [
+        { translateX: translateX.value },
+        { translateY: translateY.value },
+        { scale: scale.value },
+      ],
+    };
+  });
 
   return (
     <GestureDetector gesture={composed}>

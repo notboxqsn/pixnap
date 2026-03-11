@@ -24,16 +24,12 @@ import { generatePdf } from '@/services/pdfService';
 import { checkAndShowAd } from '@/services/adService';
 import { detectDocument } from '@/modules/document-detection/src';
 import { SUPPORTED_LANGUAGES, changeLanguage } from '@/i18n';
+import CameraScanner from '@/components/scanner/CameraScanner';
 import ZoomableImage from '@/components/ZoomableImage';
+import ImageEditorPanel from '@/components/ImageEditorPanel';
 import type { ScannerCorners, EnhanceMode, ScanResult } from '@/types';
 
-type Step = 'camera' | 'crop' | 'preview';
-
-const ENHANCE_OPTIONS: { key: EnhanceMode; labelKey: string; icon: string }[] = [
-  { key: 'bw', labelKey: 'bw', icon: 'file-text-o' },
-  { key: 'gray', labelKey: 'gray', icon: 'adjust' },
-  { key: 'color', labelKey: 'color', icon: 'photo' },
-];
+type Step = 'home' | 'camera' | 'crop' | 'preview';
 
 const DEFAULT_CORNERS: ScannerCorners = {
   tl: { x: 0.1, y: 0.1 },
@@ -54,11 +50,11 @@ export default function ScanScreen() {
   const { t, i18n } = useTranslation();
   const processorRef = useRef<ImageProcessorHandle>(null);
 
-  const [step, setStep] = useState<Step>('camera');
+  const [step, setStep] = useState<Step>('home');
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageSize, setImageSize] = useState({ width: 1, height: 1 });
   const [corners, setCorners] = useState<ScannerCorners>(DEFAULT_CORNERS);
-  const [enhanceMode, setEnhanceMode] = useState<EnhanceMode>('color');
+  const enhanceMode: EnhanceMode = 'color';
   const [processing, setProcessing] = useState(false);
   const [detecting, setDetecting] = useState(false);
   const [nativeScan, setNativeScan] = useState(false);
@@ -78,19 +74,13 @@ export default function ScanScreen() {
       const file = new File(asset.uri);
       const b64 = await file.base64();
       base64Ref.current = b64;
-      let found = false;
       try {
         const nativeCorners = await detectDocument(b64);
         if (nativeCorners) {
           setCorners(nativeCorners);
-          found = true;
         }
-      } catch {}
-      if (!found && processorRef.current) {
-        const detected = await processorRef.current.detect(b64);
-        if (detected) {
-          setCorners(detected);
-        }
+      } catch (e) {
+        console.warn('[Pixnap] ONNX detection failed:', e);
       }
     } catch {
       // detection failed silently, keep default corners
@@ -112,6 +102,35 @@ export default function ScanScreen() {
       Alert.alert(t('scanFailed'), e.message || t('scanFailedMsg'));
     }
   }, [t, handleAssetPicked]);
+
+  const handleCameraCapture = useCallback(
+    async (uri: string, width: number, height: number, corners: ScannerCorners | null, base64: string) => {
+      setImageUri(uri);
+      setImageSize({ width, height });
+      setResult(null);
+      setNativeScan(false);
+      base64Ref.current = base64;
+      setStep('crop');
+      setDetecting(true);
+      try {
+        // Use ONNX native detection on the full-res capture
+        const nativeCorners = await detectDocument(base64);
+        if (nativeCorners) {
+          setCorners(nativeCorners);
+        } else if (corners) {
+          // Fall back to live-preview corners if available
+          setCorners(corners);
+        } else {
+          setCorners(DEFAULT_CORNERS);
+        }
+      } catch {
+        setCorners(corners ?? DEFAULT_CORNERS);
+      } finally {
+        setDetecting(false);
+      }
+    },
+    [],
+  );
 
   const handlePickLibrary = useCallback(async () => {
     try {
@@ -179,8 +198,12 @@ export default function ScanScreen() {
     }
   }, [result, t]);
 
+  const handleEditorResult = useCallback((edited: ScanResult) => {
+    setResult(edited);
+  }, []);
+
   const resetToStart = useCallback(() => {
-    setStep('camera');
+    setStep('home');
     setImageUri(null);
     setResult(null);
     setNativeScan(false);
@@ -250,8 +273,8 @@ export default function ScanScreen() {
     </Modal>
   );
 
-  // ── Camera step ──
-  const renderCameraStep = () => (
+  // ── Home step ──
+  const renderHomeStep = () => (
     <View style={styles.cameraStep}>
       <View style={styles.cameraStepContent}>
         <FontAwesome name="file-text-o" size={64} color={Colors[theme].subtleText} />
@@ -263,7 +286,7 @@ export default function ScanScreen() {
       <View style={[styles.controlPanel, { backgroundColor: Colors[theme].cardBackground }]}>
         <TouchableOpacity
           style={[styles.scanBtn, { backgroundColor: Colors[theme].tint }]}
-          onPress={handleNativeScan}
+          onPress={async () => { await checkAndShowAd(); setStep('camera'); }}
           activeOpacity={0.7}
         >
           <FontAwesome name="camera" size={18} color="#fff" style={{ marginRight: 8 }} />
@@ -287,6 +310,15 @@ export default function ScanScreen() {
         </TouchableOpacity>
       </View>
     </View>
+  );
+
+  // ── Camera step (live scanner) ──
+  const renderCameraStep = () => (
+    <CameraScanner
+      processorRef={processorRef}
+      onCapture={handleCameraCapture}
+      onPickLibrary={handlePickLibrary}
+    />
   );
 
   // ── Crop step ──
@@ -317,41 +349,6 @@ export default function ScanScreen() {
       </View>
 
       <View style={[styles.controlPanel, { backgroundColor: Colors[theme].cardBackground }]}>
-        <Text style={[styles.controlLabel, { color: Colors[theme].subtleText }]}>{t('enhanceMode')}</Text>
-        <View style={styles.modeRow}>
-          {ENHANCE_OPTIONS.map((opt) => {
-            const selected = enhanceMode === opt.key;
-            return (
-              <TouchableOpacity
-                key={opt.key}
-                style={[
-                  styles.modeBtn,
-                  {
-                    borderColor: selected ? Colors[theme].tint : Colors[theme].inputBackground,
-                    backgroundColor: selected ? Colors[theme].tint + '15' : Colors[theme].inputBackground,
-                  },
-                ]}
-                onPress={() => setEnhanceMode(opt.key)}
-                activeOpacity={0.7}
-              >
-                <FontAwesome
-                  name={opt.icon as any}
-                  size={18}
-                  color={selected ? Colors[theme].tint : Colors[theme].subtleText}
-                />
-                <Text
-                  style={[
-                    styles.modeBtnText,
-                    { color: selected ? Colors[theme].tint : Colors[theme].text },
-                  ]}
-                >
-                  {t(opt.labelKey)}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={[styles.actionBtn, { backgroundColor: Colors[theme].inputBackground }]}
@@ -381,50 +378,15 @@ export default function ScanScreen() {
   const renderPreviewStep = () => (
     <View style={styles.flex}>
       {result && (
-        <ZoomableImage
-          uri={`data:image/png;base64,${result.base64}`}
-          aspectRatio={result.width / result.height}
+        <ImageEditorPanel
+          result={result}
+          onResultChange={handleEditorResult}
+          onRescan={resetToStart}
+          onBackToCrop={() => setStep('crop')}
+          onSavePng={savePng}
+          onSavePdf={savePdf}
         />
       )}
-
-      <View style={[styles.controlPanel, { backgroundColor: Colors[theme].cardBackground }]}>
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: Colors[theme].inputBackground }]}
-            onPress={resetToStart}
-            activeOpacity={0.7}
-          >
-            <FontAwesome name="refresh" size={14} color={Colors[theme].text} style={{ marginRight: 6 }} />
-            <Text style={[styles.actionBtnText, { color: Colors[theme].text }]}>{t('rescan')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: Colors[theme].inputBackground }]}
-            onPress={() => setStep('crop')}
-            activeOpacity={0.7}
-          >
-            <FontAwesome name="crop" size={14} color={Colors[theme].text} style={{ marginRight: 6 }} />
-            <Text style={[styles.actionBtnText, { color: Colors[theme].text }]}>{t('backToCrop')}</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={[styles.actionRow, { marginTop: 10 }]}>
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: Colors[theme].tint }]}
-            onPress={savePng}
-            activeOpacity={0.7}
-          >
-            <FontAwesome name="image" size={14} color="#fff" style={{ marginRight: 6 }} />
-            <Text style={[styles.actionBtnText, { color: '#fff' }]}>{t('savePng')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: '#ff3b30' }]}
-            onPress={savePdf}
-            activeOpacity={0.7}
-          >
-            <FontAwesome name="file-pdf-o" size={14} color="#fff" style={{ marginRight: 6 }} />
-            <Text style={[styles.actionBtnText, { color: '#fff' }]}>{t('savePdf')}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
     </View>
   );
 
@@ -439,6 +401,7 @@ export default function ScanScreen() {
         </View>
       )}
 
+      {step === 'home' && renderHomeStep()}
       {step === 'camera' && renderCameraStep()}
       {step === 'crop' && renderCropStep()}
       {step === 'preview' && renderPreviewStep()}
@@ -463,19 +426,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
-  controlLabel: { fontSize: 13, marginBottom: 8 },
-  modeRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-  modeBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1.5,
-  },
-  modeBtnText: { fontSize: 14, fontWeight: '600' },
   actionRow: { flexDirection: 'row', gap: 10 },
   actionBtn: {
     flex: 1,

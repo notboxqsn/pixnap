@@ -13,6 +13,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useTranslation } from 'react-i18next';
 import type { ImageProcessorHandle } from './ImageProcessor';
 import Svg, { Polygon } from 'react-native-svg';
+import { detectDocument } from '@/modules/document-detection/src';
 import type { ScannerCorners, ScannerCorner } from '@/types';
 
 interface CameraScannerProps {
@@ -99,7 +100,7 @@ export default function CameraScanner({
 
   // Detection loop
   const detectLoop = useCallback(async () => {
-    if (!cameraRef.current || !processorRef.current || isCapturing || detectingRef.current) return;
+    if (!cameraRef.current || isCapturing || detectingRef.current) return;
     detectingRef.current = true;
     try {
       const snap = await cameraRef.current.takePictureAsync({
@@ -107,8 +108,11 @@ export default function CameraScanner({
         base64: true,
         shutterSound: false,
       });
-      if (snap?.base64 && processorRef.current) {
-        let detected = await processorRef.current.detect(snap.base64);
+      if (snap?.base64) {
+        let detected: ScannerCorners | null = null;
+        try {
+          detected = await detectDocument(snap.base64);
+        } catch {}
 
         if (detected) {
           // Aspect ratio correction

@@ -54,69 +54,30 @@ class DocumentDetectionModule : Module() {
       ?: return null
     Log.d(TAG, "Decoded: ${decoded.width}x${decoded.height} (sample=$sampleSize)")
 
-    // 3. Try ONNX model first (ML-based, most accurate)
+    // 3. ONNX model detection only (no CV fallback)
     val context = appContext.reactContext
-    if (context != null) {
-      OnnxDocumentDetector.ensureInitialized(context)
-      val onnxResult = OnnxDocumentDetector.detect(decoded)
-      if (onnxResult != null) {
-        decoded.recycle()
-        return cornersToMap(onnxResult)
-      }
-      Log.d(TAG, "ONNX failed, falling back to traditional CV")
+    if (context == null) {
+      Log.e(TAG, "React context is null, cannot initialize ONNX")
+      decoded.recycle()
+      return null
     }
 
-    // 4. Fallback: traditional CV pipeline (RANSAC → segment → contour → Hough)
-    var gray800: DoubleArray? = null
-    var w800 = 0; var h800 = 0
-
-    if (maxOf(origW, origH) > 800 && maxOf(decoded.width, decoded.height) > 500) {
-      val g = extractScaledGray(decoded, 800)
-      if (g != null) {
-        gray800 = g.first; w800 = g.second; h800 = g.third
-      }
+    val initialized = OnnxDocumentDetector.ensureInitialized(context)
+    if (!initialized) {
+      Log.e(TAG, "ONNX model failed to initialize")
+      decoded.recycle()
+      return null
     }
 
-    val g500 = extractScaledGray(decoded, 500)
-    val gray500: DoubleArray
-    val w500: Int; val h500: Int
-    if (g500 != null) {
-      gray500 = g500.first; w500 = g500.second; h500 = g500.third
-    } else {
-      gray500 = bitmapToGray(decoded)
-      w500 = decoded.width; h500 = decoded.height
-    }
-
+    val onnxResult = OnnxDocumentDetector.detect(decoded)
     decoded.recycle()
 
-    val corners = DocumentDetector.detect(gray800, w800, h800, gray500, w500, h500)
-    if (corners != null) return cornersToMap(corners)
+    if (onnxResult != null) {
+      return cornersToMap(onnxResult)
+    }
 
-    Log.d(TAG, "No document found")
+    Log.d(TAG, "ONNX: no document found")
     return null
   }
 
-  private fun extractScaledGray(src: Bitmap, maxSide: Int): Triple<DoubleArray, Int, Int>? {
-    val longer = maxOf(src.width, src.height)
-    if (longer <= maxSide) return null
-    val scale = maxSide.toFloat() / longer
-    val newW = (src.width * scale).toInt().coerceAtLeast(1)
-    val newH = (src.height * scale).toInt().coerceAtLeast(1)
-    val scaled = Bitmap.createScaledBitmap(src, newW, newH, true)
-    val gray = bitmapToGray(scaled)
-    if (scaled !== src) scaled.recycle()
-    return Triple(gray, newW, newH)
-  }
-
-  private fun bitmapToGray(bmp: Bitmap): DoubleArray {
-    val w = bmp.width; val h = bmp.height
-    val pixels = IntArray(w * h)
-    bmp.getPixels(pixels, 0, w, 0, 0, w, h)
-    val gray = DoubleArray(w * h)
-    for (i in 0 until w * h) {
-      val px = pixels[i]
-      gray[i] = 0.299 * ((px shr 16) and 0xFF) + 0.587 * ((px shr 8) and 0xFF) + 0.114 * (px and 0xFF)
-    }
-    return gray
-  }
 }

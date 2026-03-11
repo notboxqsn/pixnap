@@ -17,7 +17,7 @@ object OnnxDocumentDetector {
   private const val TAG = "DocumentDetection"
   private const val MODEL_FILE = "docaligner_fastvit_t8.onnx"
   private const val INPUT_SIZE = 256
-  private const val HEATMAP_THRESHOLD = 0.3f
+  private const val HEATMAP_THRESHOLD = 0.1f
   private const val MIN_ACTIVATION_PIXELS = 3
 
   private var ortEnv: OrtEnvironment? = null
@@ -132,26 +132,17 @@ object OnnxDocumentDetector {
       return null
     }
 
-    // 6. Order corners: tl, tr, br, bl
-    val ordered = orderCorners(corners)
-
+    // 6. Heatmap channels are already ordered: 0=tl, 1=tr, 2=br, 3=bl
     // 7. Clamp to [0, 1] and return
     return Corners(
-      tl = Point(ordered[0][0].coerceIn(0.0, 1.0), ordered[0][1].coerceIn(0.0, 1.0)),
-      tr = Point(ordered[1][0].coerceIn(0.0, 1.0), ordered[1][1].coerceIn(0.0, 1.0)),
-      br = Point(ordered[2][0].coerceIn(0.0, 1.0), ordered[2][1].coerceIn(0.0, 1.0)),
-      bl = Point(ordered[3][0].coerceIn(0.0, 1.0), ordered[3][1].coerceIn(0.0, 1.0))
+      tl = Point(corners[0][0].coerceIn(0.0, 1.0), corners[0][1].coerceIn(0.0, 1.0)),
+      tr = Point(corners[1][0].coerceIn(0.0, 1.0), corners[1][1].coerceIn(0.0, 1.0)),
+      br = Point(corners[2][0].coerceIn(0.0, 1.0), corners[2][1].coerceIn(0.0, 1.0)),
+      bl = Point(corners[3][0].coerceIn(0.0, 1.0), corners[3][1].coerceIn(0.0, 1.0))
     ).also {
       Log.d(TAG, "ONNX result: tl=(%.3f,%.3f) tr=(%.3f,%.3f) br=(%.3f,%.3f) bl=(%.3f,%.3f)".format(
         it.tl.x, it.tl.y, it.tr.x, it.tr.y, it.br.x, it.br.y, it.bl.x, it.bl.y))
     }
   }
 
-  /** Order 4 corners: sort by y → top/bottom pairs, then by x within each pair */
-  private fun orderCorners(pts: List<DoubleArray>): List<DoubleArray> {
-    val sorted = pts.sortedBy { it[1] }
-    val top = sorted.subList(0, 2).sortedBy { it[0] }
-    val bot = sorted.subList(2, 4).sortedBy { it[0] }
-    return listOf(top[0], top[1], bot[1], bot[0]) // tl, tr, br, bl
-  }
 }
