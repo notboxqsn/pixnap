@@ -6,6 +6,245 @@ public class DocumentDetectionModule: Module {
   public func definition() -> ModuleDefinition {
     Name("DocumentDetection")
 
+    // Native perspective correction using Core Image — handles full-res images
+    AsyncFunction("processImageNative") { (base64: String, corners: [String: [String: Double]], mode: String) -> [String: Any] in
+      guard let data = Data(base64Encoded: base64),
+            let uiImage = UIImage(data: data),
+            let cgImage = uiImage.cgImage else {
+        throw NSError(domain: "DocumentDetection", code: 2,
+                      userInfo: [NSLocalizedDescriptionKey: "Could not decode image"])
+      }
+
+      // Apply EXIF orientation so CIImage extent matches displayed dimensions
+      let rawCI = CIImage(cgImage: cgImage)
+      var ciImage: CIImage
+      switch uiImage.imageOrientation {
+      case .up:            ciImage = rawCI
+      case .down:          ciImage = rawCI.oriented(.down)
+      case .left:          ciImage = rawCI.oriented(.left)
+      case .right:         ciImage = rawCI.oriented(.right)
+      case .upMirrored:    ciImage = rawCI.oriented(.upMirrored)
+      case .downMirrored:  ciImage = rawCI.oriented(.downMirrored)
+      case .leftMirrored:  ciImage = rawCI.oriented(.leftMirrored)
+      case .rightMirrored: ciImage = rawCI.oriented(.rightMirrored)
+      @unknown default:    ciImage = rawCI
+      }
+
+      // After orientation, extent origin might not be (0,0) — translate back
+      if ciImage.extent.origin != .zero {
+        ciImage = ciImage.transformed(by: CGAffineTransform(translationX: -ciImage.extent.origin.x, y: -ciImage.extent.origin.y))
+      }
+
+      let w = ciImage.extent.width
+      let h = ciImage.extent.height
+
+      // Convert normalized corners to CIImage coordinates (origin bottom-left)
+      guard let tl = corners["tl"], let tr = corners["tr"],
+            let br = corners["br"], let bl = corners["bl"] else {
+        throw NSError(domain: "DocumentDetection", code: 3,
+                      userInfo: [NSLocalizedDescriptionKey: "Invalid corners"])
+      }
+
+      let topLeft = CIVector(x: CGFloat(tl["x"]!) * w, y: (1 - CGFloat(tl["y"]!)) * h)
+      let topRight = CIVector(x: CGFloat(tr["x"]!) * w, y: (1 - CGFloat(tr["y"]!)) * h)
+      let bottomRight = CIVector(x: CGFloat(br["x"]!) * w, y: (1 - CGFloat(br["y"]!)) * h)
+      let bottomLeft = CIVector(x: CGFloat(bl["x"]!) * w, y: (1 - CGFloat(bl["y"]!)) * h)
+
+      guard let filter = CIFilter(name: "CIPerspectiveCorrection") else {
+        throw NSError(domain: "DocumentDetection", code: 4,
+                      userInfo: [NSLocalizedDescriptionKey: "CIPerspectiveCorrection not available"])
+      }
+
+      filter.setValue(ciImage, forKey: kCIInputImageKey)
+      filter.setValue(topLeft, forKey: "inputTopLeft")
+      filter.setValue(topRight, forKey: "inputTopRight")
+      filter.setValue(bottomRight, forKey: "inputBottomRight")
+      filter.setValue(bottomLeft, forKey: "inputBottomLeft")
+
+      guard var outputImage = filter.outputImage else {
+        throw NSError(domain: "DocumentDetection", code: 5,
+                      userInfo: [NSLocalizedDescriptionKey: "Perspective correction failed"])
+      }
+
+      // Apply enhancement based on mode
+      if mode == "gray" {
+        if let grayFilter = CIFilter(name: "CIPhotoEffectMono") {
+          grayFilter.setValue(outputImage, forKey: kCIInputImageKey)
+          if let result = grayFilter.outputImage { outputImage = result }
+        }
+        // Increase contrast for document clarity
+        if let contrastFilter = CIFilter(name: "CIColorControls") {
+          contrastFilter.setValue(outputImage, forKey: kCIInputImageKey)
+          contrastFilter.setValue(1.3, forKey: kCIInputContrastKey)
+          contrastFilter.setValue(0.05, forKey: kCIInputBrightnessKey)
+          if let result = contrastFilter.outputImage { outputImage = result }
+        }
+      } else if mode == "bw" {
+        if let grayFilter = CIFilter(name: "CIPhotoEffectMono") {
+          grayFilter.setValue(outputImage, forKey: kCIInputImageKey)
+          if let result = grayFilter.outputImage { outputImage = result }
+        }
+        // High contrast for B&W document look
+        if let contrastFilter = CIFilter(name: "CIColorControls") {
+          contrastFilter.setValue(outputImage, forKey: kCIInputImageKey)
+          contrastFilter.setValue(2.0, forKey: kCIInputContrastKey)
+          contrastFilter.setValue(0.1, forKey: kCIInputBrightnessKey)
+          if let result = contrastFilter.outputImage { outputImage = result }
+        }
+      } else {
+        // "color" mode — subtle enhancement
+        if let contrastFilter = CIFilter(name: "CIColorControls") {
+          contrastFilter.setValue(outputImage, forKey: kCIInputImageKey)
+          contrastFilter.setValue(1.1, forKey: kCIInputContrastKey)
+          contrastFilter.setValue(1.05, forKey: kCIInputSaturationKey)
+          if let result = contrastFilter.outputImage { outputImage = result }
+        }
+      }
+
+      // Keep high quality — editor is now native too
+      let maxOutputDim: CGFloat = 4000
+      let extent = outputImage.extent
+      if extent.width > maxOutputDim || extent.height > maxOutputDim {
+        let scale = maxOutputDim / max(extent.width, extent.height)
+        if let scaleFilter = CIFilter(name: "CILanczosScaleTransform") {
+          scaleFilter.setValue(outputImage, forKey: kCIInputImageKey)
+          scaleFilter.setValue(scale, forKey: kCIInputScaleKey)
+          scaleFilter.setValue(1.0, forKey: kCIInputAspectRatioKey)
+          if let scaled = scaleFilter.outputImage { outputImage = scaled }
+        }
+      }
+
+      let context = CIContext(options: [.useSoftwareRenderer: false])
+      let finalExtent = outputImage.extent
+      guard let cgResult = context.createCGImage(outputImage, from: finalExtent) else {
+        throw NSError(domain: "DocumentDetection", code: 6,
+                      userInfo: [NSLocalizedDescriptionKey: "Failed to render result"])
+      }
+
+      let resultImage = UIImage(cgImage: cgResult)
+      guard let jpegData = resultImage.jpegData(compressionQuality: 0.92) else {
+        throw NSError(domain: "DocumentDetection", code: 7,
+                      userInfo: [NSLocalizedDescriptionKey: "Failed to encode JPEG"])
+      }
+
+      let resultBase64 = jpegData.base64EncodedString()
+      return [
+        "base64": resultBase64,
+        "width": Int(finalExtent.width),
+        "height": Int(finalExtent.height)
+      ]
+    }
+
+    // Native image editing — rotation, brightness, contrast, saturation, warmth, sepia, grayscale
+    AsyncFunction("applyEditsNative") { (base64: String, rotation: Int, brightness: Double, contrast: Double, saturation: Double, warmth: Double, sepia: Double, grayscale: Double) -> [String: Any] in
+      guard let data = Data(base64Encoded: base64),
+            let uiImage = UIImage(data: data),
+            let cgImage = uiImage.cgImage else {
+        throw NSError(domain: "DocumentDetection", code: 10,
+                      userInfo: [NSLocalizedDescriptionKey: "Could not decode image"])
+      }
+
+      // Apply orientation
+      let rawCI = CIImage(cgImage: cgImage)
+      var ciImage: CIImage
+      switch uiImage.imageOrientation {
+      case .up:            ciImage = rawCI
+      case .down:          ciImage = rawCI.oriented(.down)
+      case .left:          ciImage = rawCI.oriented(.left)
+      case .right:         ciImage = rawCI.oriented(.right)
+      case .upMirrored:    ciImage = rawCI.oriented(.upMirrored)
+      case .downMirrored:  ciImage = rawCI.oriented(.downMirrored)
+      case .leftMirrored:  ciImage = rawCI.oriented(.leftMirrored)
+      case .rightMirrored: ciImage = rawCI.oriented(.rightMirrored)
+      @unknown default:    ciImage = rawCI
+      }
+
+      if ciImage.extent.origin != .zero {
+        ciImage = ciImage.transformed(by: CGAffineTransform(translationX: -ciImage.extent.origin.x, y: -ciImage.extent.origin.y))
+      }
+
+      // Rotation
+      if rotation != 0 {
+        let radians = CGFloat(rotation) * .pi / 180.0
+        ciImage = ciImage.transformed(by: CGAffineTransform(rotationAngle: radians))
+        if ciImage.extent.origin != .zero {
+          ciImage = ciImage.transformed(by: CGAffineTransform(translationX: -ciImage.extent.origin.x, y: -ciImage.extent.origin.y))
+        }
+      }
+
+      // Brightness & Contrast & Saturation via CIColorControls
+      let bFactor = brightness / 100.0  // -0.5 to 0.5
+      let cFactor = 1.0 + contrast / 100.0  // 0.5 to 1.5
+      let sFactor = 1.0 + saturation / 100.0  // 0.5 to 1.5
+      if let colorFilter = CIFilter(name: "CIColorControls") {
+        colorFilter.setValue(ciImage, forKey: kCIInputImageKey)
+        colorFilter.setValue(bFactor, forKey: kCIInputBrightnessKey)
+        colorFilter.setValue(cFactor, forKey: kCIInputContrastKey)
+        colorFilter.setValue(sFactor, forKey: kCIInputSaturationKey)
+        if let result = colorFilter.outputImage { ciImage = result }
+      }
+
+      // Warmth via CITemperatureAndTint
+      if warmth != 0 {
+        if let tempFilter = CIFilter(name: "CITemperatureAndTint") {
+          tempFilter.setValue(ciImage, forKey: kCIInputImageKey)
+          let neutral = CIVector(x: 6500, y: 0) // neutral white point
+          let target = CIVector(x: 6500 + CGFloat(warmth) * 30, y: 0)
+          tempFilter.setValue(neutral, forKey: "inputNeutral")
+          tempFilter.setValue(target, forKey: "inputTargetNeutral")
+          if let result = tempFilter.outputImage { ciImage = result }
+        }
+      }
+
+      // Grayscale
+      if grayscale > 0 {
+        if let grayFilter = CIFilter(name: "CIPhotoEffectMono") {
+          grayFilter.setValue(ciImage, forKey: kCIInputImageKey)
+          if let grayResult = grayFilter.outputImage {
+            // Blend: mix original and grayscale based on grayscale percentage
+            let alpha = grayscale / 100.0
+            if alpha >= 1.0 {
+              ciImage = grayResult
+            } else if let blendFilter = CIFilter(name: "CIDissolveTransition") {
+              blendFilter.setValue(ciImage, forKey: kCIInputImageKey)
+              blendFilter.setValue(grayResult, forKey: kCIInputTargetImageKey)
+              blendFilter.setValue(alpha, forKey: kCIInputTimeKey)
+              if let result = blendFilter.outputImage { ciImage = result }
+            }
+          }
+        }
+      }
+
+      // Sepia
+      if sepia > 0 {
+        if let sepiaFilter = CIFilter(name: "CISepiaTone") {
+          sepiaFilter.setValue(ciImage, forKey: kCIInputImageKey)
+          sepiaFilter.setValue(sepia / 100.0, forKey: kCIInputIntensityKey)
+          if let result = sepiaFilter.outputImage { ciImage = result }
+        }
+      }
+
+      let context = CIContext(options: [.useSoftwareRenderer: false])
+      let finalExtent = ciImage.extent
+      guard let cgResult = context.createCGImage(ciImage, from: finalExtent) else {
+        throw NSError(domain: "DocumentDetection", code: 11,
+                      userInfo: [NSLocalizedDescriptionKey: "Failed to render edited image"])
+      }
+
+      let resultImage = UIImage(cgImage: cgResult)
+      guard let jpegData = resultImage.jpegData(compressionQuality: 0.92) else {
+        throw NSError(domain: "DocumentDetection", code: 12,
+                      userInfo: [NSLocalizedDescriptionKey: "Failed to encode JPEG"])
+      }
+
+      let resultBase64 = jpegData.base64EncodedString()
+      return [
+        "base64": resultBase64,
+        "width": Int(finalExtent.width),
+        "height": Int(finalExtent.height)
+      ]
+    }
+
     AsyncFunction("detectDocument") { (base64: String) -> [String: [String: Double]]? in
       guard let data = Data(base64Encoded: base64),
             let image = UIImage(data: data),

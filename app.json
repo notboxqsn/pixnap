@@ -2,7 +2,7 @@
   "expo": {
     "name": "Pixnap",
     "slug": "pixnap",
-    "version": "1.3.0",
+    "version": "1.4.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -16,13 +16,12 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "需要相机权限来拍摄票据",
-        "NSPhotoLibraryUsageDescription": "需要相册权限来选择票据图片",
-        "NSPhotoLibraryAddUsageDescription": "Pixnap needs access to save scanned images to your photo library.",
-        "NSUserTrackingUsageDescription": "This allows Pixnap to show you relevant ads."
+        "NSCameraUsageDescription": "Pixnap needs camera access to scan documents.",
+        "NSPhotoLibraryUsageDescription": "Pixnap needs photo library access to select images for scanning.",
+        "NSPhotoLibraryAddUsageDescription": "Pixnap needs access to save scanned images to your photo library."
       },
       "bundleIdentifier": "me.pixnap",
-      "buildNumber": "1",
+      "buildNumber": "18",
       "config": {
         "usesNonExemptEncryption": false
       }
@@ -51,7 +50,7 @@
       [
         "react-native-document-scanner-plugin",
         {
-          "cameraPermission": "需要相机权限来扫描文档"
+          "cameraPermission": "Pixnap needs camera access to scan documents."
         }
       ],
       [
@@ -61,12 +60,11 @@
           "iosAppId": "ca-app-pub-6262791337263815~9846555378"
         }
       ],
-      "expo-tracking-transparency",
       [
         "expo-media-library",
         {
-          "photosPermission": "需要相册权限来保存扫描的图片",
-          "savePhotosPermission": "需要相册权限来保存扫描的图片"
+          "photosPermission": "Pixnap needs photo library access to save scanned images.",
+          "savePhotosPermission": "Pixnap needs photo library access to save scanned images."
         }
       ]
     ],

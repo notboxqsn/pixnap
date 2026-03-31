@@ -1,0 +1,7 @@
+expo.modules.documentdetection.document-detection-pngs-0 /Users/binzhu/Projects/pixnap/modules/document-detection/android/build/generated/res/pngs/release
+expo.modules.documentdetection.document-detection-resValues-1 /Users/binzhu/Projects/pixnap/modules/document-detection/android/build/generated/res/resValues/release
+expo.modules.documentdetection.document-detection-mergeReleaseResources-2 /Users/binzhu/Projects/pixnap/modules/document-detection/android/build/intermediates/incremental/release/mergeReleaseResources/merged.dir
+expo.modules.documentdetection.document-detection-mergeReleaseResources-3 /Users/binzhu/Projects/pixnap/modules/document-detection/android/build/intermediates/incremental/release/mergeReleaseResources/stripped.dir
+expo.modules.documentdetection.document-detection-release-4 /Users/binzhu/Projects/pixnap/modules/document-detection/android/build/intermediates/merged_res/release/mergeReleaseResources
+expo.modules.documentdetection.document-detection-main-5 /Users/binzhu/Projects/pixnap/modules/document-detection/android/src/main/res
+expo.modules.documentdetection.document-detection-release-6 /Users/binzhu/Projects/pixnap/modules/document-detection/android/src/release/res

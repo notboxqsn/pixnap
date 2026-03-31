@@ -43,3 +43,6 @@ credentials.json
 # generated native folders
 /ios
 /android
+
+# Keystore backup (never delete)
+.keys/

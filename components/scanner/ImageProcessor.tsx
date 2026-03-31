@@ -23,6 +23,8 @@ const ImageProcessor = forwardRef<ImageProcessorHandle, {}>((_props, ref) => {
     resolve: (r: FilterPreviews) => void;
     reject: (e: Error) => void;
   } | null>(null);
+  const chunksRef = useRef<string[]>([]);
+  const chunkMetaRef = useRef<{ total: number; width: number; height: number }>({ total: 0, width: 0, height: 0 });
 
   const onMessage = useCallback((event: WebViewMessageEvent) => {
     try {
@@ -35,6 +37,22 @@ const ImageProcessor = forwardRef<ImageProcessorHandle, {}>((_props, ref) => {
           height: msg.height,
         });
         pendingRef.current = null;
+      } else if (msg.type === 'resultChunk' && pendingRef.current) {
+        if (msg.index === 0) {
+          chunksRef.current = new Array(msg.total);
+          chunkMetaRef.current = { total: msg.total, width: msg.width, height: msg.height };
+        }
+        chunksRef.current[msg.index] = msg.data;
+        const allReceived = chunksRef.current.length === chunkMetaRef.current.total &&
+          chunksRef.current.every((c) => c !== undefined);
+        if (allReceived) {
+          const fullBase64 = chunksRef.current.join('');
+          const { width, height } = chunkMetaRef.current;
+          console.log(`[ImageProcessor] chunks assembled → out=${width}x${height}, b64len=${fullBase64.length}`);
+          pendingRef.current.resolve({ base64: fullBase64, width, height });
+          pendingRef.current = null;
+          chunksRef.current = [];
+        }
       } else if (msg.type === 'error' && pendingRef.current) {
         pendingRef.current.reject(new Error(msg.message));
         pendingRef.current = null;
@@ -64,14 +82,31 @@ const ImageProcessor = forwardRef<ImageProcessorHandle, {}>((_props, ref) => {
           reject(new Error('WebView not ready'));
           return;
         }
-        pendingRef.current = { resolve, reject };
-        const payload = JSON.stringify({
-          type: 'process',
-          base64,
-          corners,
-          mode,
-        });
-        webViewRef.current.postMessage(payload);
+        const timer = setTimeout(() => {
+          if (pendingRef.current) {
+            pendingRef.current = null;
+            chunksRef.current = [];
+            reject(new Error('Processing timed out'));
+          }
+        }, 30000);
+        pendingRef.current = {
+          resolve: (r) => { clearTimeout(timer); resolve(r); },
+          reject: (e) => { clearTimeout(timer); reject(e); },
+        };
+        // Send base64 via injectJavaScript to avoid iOS postMessage size limits
+        const CHUNK = 100000;
+        const total = Math.ceil(base64.length / CHUNK);
+        for (let i = 0; i < total; i++) {
+          const chunk = base64.substring(i * CHUNK, (i + 1) * CHUNK);
+          webViewRef.current!.injectJavaScript(
+            `receiveProcessChunk(${i},${total},'${chunk}'); true;`
+          );
+        }
+        // Trigger processing after all chunks sent
+        const cornersJson = JSON.stringify(corners);
+        webViewRef.current!.injectJavaScript(
+          `startProcess(${cornersJson},'${mode}'); true;`
+        );
       });
     },
     detect(base64: string): Promise<ScannerCorners | null> {

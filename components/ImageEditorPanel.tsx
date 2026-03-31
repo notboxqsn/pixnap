@@ -8,11 +8,11 @@ import {
   useColorScheme,
   ActivityIndicator,
 } from 'react-native';
-import WebView, { WebViewMessageEvent } from 'react-native-webview';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useTranslation } from 'react-i18next';
 import Colors from '@/constants/Colors';
 import ZoomableImage from '@/components/ZoomableImage';
+import { applyEditsNative } from '@/modules/document-detection/src';
 import type { ScanResult } from '@/types';
 
 interface Props {
@@ -48,126 +48,9 @@ const FILTER_PRESETS: FilterPreset[] = [
   { key: 'highContrast', labelKey: 'filterHighContrast', brightness: 0, contrast: 40, saturation: 10, warmth: 0, sepia: 0, grayscale: 0 },
 ];
 
-function getEditorHtml(): string {
-  return `<!DOCTYPE html>
-<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>body{margin:0;background:#000}canvas{display:none}</style>
-</head><body>
-<canvas id="c"></canvas>
-<script>
-var canvas = document.getElementById('c');
-var ctx = canvas.getContext('2d');
-var img = new Image();
-var imgLoaded = false;
-var imgChunks = [];
-var imgChunkTotal = 0;
-var MAX_DIM = 2048;
-
-function sendMsg(obj) {
-  window.ReactNativeWebView.postMessage(JSON.stringify(obj));
-}
-
-function receiveImageChunk(index, total, data) {
-  imgChunkTotal = total;
-  imgChunks[index] = data;
-  var count = 0;
-  for (var i = 0; i < total; i++) { if (imgChunks[i]) count++; }
-  if (count === total) {
-    var b64 = imgChunks.join('');
-    imgChunks = [];
-    var mime = (b64.charAt(0) === 'i') ? 'image/png' : 'image/jpeg';
-    sendMsg({type:'debug', message:'loading ' + mime + ', b64 len=' + b64.length});
-    img.onload = function() {
-      imgLoaded = true;
-      sendMsg({type:'ready', width: img.width, height: img.height});
-    };
-    img.onerror = function() {
-      sendMsg({type:'error', message:'Failed to load image from base64'});
-    };
-    img.src = 'data:' + mime + ';base64,' + b64;
-  }
-}
-
-function applyEdits(rotation, brightness, contrast, saturation, warmth, sepia, grayscale) {
-  if (!imgLoaded) { sendMsg({type:'error',message:'Image not loaded yet'}); return; }
-
-  try {
-    var scale = 1;
-    if (img.width > MAX_DIM || img.height > MAX_DIM) {
-      scale = MAX_DIM / Math.max(img.width, img.height);
-    }
-    var sw = Math.round(img.width * scale);
-    var sh = Math.round(img.height * scale);
-
-    var isRotated = (rotation === 90 || rotation === 270);
-    var w = isRotated ? sh : sw;
-    var h = isRotated ? sw : sh;
-
-    canvas.width = w;
-    canvas.height = h;
-    ctx.clearRect(0, 0, w, h);
-    ctx.save();
-    ctx.translate(w / 2, h / 2);
-    ctx.rotate(rotation * Math.PI / 180);
-    ctx.drawImage(img, -sw / 2, -sh / 2, sw, sh);
-    ctx.restore();
-
-    var needsFilter = brightness !== 0 || contrast !== 0 || saturation !== 0 || warmth !== 0 || sepia > 0 || grayscale > 0;
-    if (needsFilter) {
-      var imageData = ctx.getImageData(0, 0, w, h);
-      var d = imageData.data;
-      var len = d.length;
-      var bF = 1 + brightness / 100;
-      var cF = 1 + contrast / 100;
-      var sF = 1 + saturation / 100;
-      var wS = warmth * 0.5;
-      var gF = grayscale / 100;
-      var sepF = sepia / 100;
-
-      for (var p = 0; p < len; p += 4) {
-        var r = d[p], g = d[p+1], b = d[p+2];
-        if (bF !== 1) { r *= bF; g *= bF; b *= bF; }
-        if (cF !== 1) { r = (r - 128) * cF + 128; g = (g - 128) * cF + 128; b = (b - 128) * cF + 128; }
-        if (sF !== 1) { var gr = 0.2126 * r + 0.7152 * g + 0.0722 * b; r = gr + (r - gr) * sF; g = gr + (g - gr) * sF; b = gr + (b - gr) * sF; }
-        if (wS !== 0) { r += wS; b -= wS; }
-        if (gF > 0) { var gv = 0.2126 * r + 0.7152 * g + 0.0722 * b; r = r + (gv - r) * gF; g = g + (gv - g) * gF; b = b + (gv - b) * gF; }
-        if (sepF > 0) { var sr = r*0.393+g*0.769+b*0.189; var sg = r*0.349+g*0.686+b*0.168; var sb = r*0.272+g*0.534+b*0.131; r = r+(sr-r)*sepF; g = g+(sg-g)*sepF; b = b+(sb-b)*sepF; }
-        d[p] = r < 0 ? 0 : r > 255 ? 255 : r;
-        d[p+1] = g < 0 ? 0 : g > 255 ? 255 : g;
-        d[p+2] = b < 0 ? 0 : b > 255 ? 255 : b;
-      }
-      ctx.putImageData(imageData, 0, 0);
-    }
-
-    var dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-    var b64 = dataUrl.replace(/^data:image\\/[^;]+;base64,/, '');
-    if (!b64 || b64.length < 100) {
-      sendMsg({type:'error', message:'toDataURL returned empty result'});
-      return;
-    }
-
-    var CHUNK = 512000;
-    if (b64.length > CHUNK) {
-      var total = Math.ceil(b64.length / CHUNK);
-      for (var i = 0; i < total; i++) {
-        sendMsg({type:'chunk', index: i, total: total, data: b64.substr(i * CHUNK, CHUNK), width: w, height: h});
-      }
-    } else {
-      sendMsg({type:'result', base64: b64, width: w, height: h});
-    }
-  } catch(e) {
-    sendMsg({type:'error', message:'applyEdits: ' + e.message});
-  }
-}
-
-sendMsg({type:'webview_init'});
-</script></body></html>`;
-}
-
 export default function ImageEditorPanel({ result, onResultChange, onRescan, onBackToCrop, onSavePng, onSavePdf }: Props) {
   const theme = useColorScheme() ?? 'light';
   const { t } = useTranslation();
-  const webViewRef = useRef<WebView>(null);
 
   const [activeTab, setActiveTab] = useState<ToolTab>('filter');
   const [rotation, setRotation] = useState(0);
@@ -181,83 +64,37 @@ export default function ImageEditorPanel({ result, onResultChange, onRescan, onB
   const [previewUri, setPreviewUri] = useState(`data:image/jpeg;base64,${result.base64}`);
   const [previewSize, setPreviewSize] = useState({ width: result.width, height: result.height });
   const [processing, setProcessing] = useState(false);
-  const [webviewReady, setWebviewReady] = useState(false);
+
+  // Keep original unedited base64 — always apply edits from scratch
+  const originalBase64Ref = useRef(result.base64);
 
   const editCountRef = useRef(0);
 
-  const applyEdits = useCallback(() => {
-    if (!webViewRef.current || !webviewReady) return;
+  // Native editing via Core Image — always from original
+  const applyEdits = useCallback(async () => {
     setProcessing(true);
-    const js = `applyEdits(${rotation},${brightness},${contrast},${saturation},${warmth},${sepia},${grayscale}); true;`;
-    webViewRef.current.injectJavaScript(js);
-  }, [rotation, brightness, contrast, saturation, warmth, sepia, grayscale, webviewReady]);
+    try {
+      const edited = await applyEditsNative(
+        originalBase64Ref.current, rotation, brightness, contrast, saturation, warmth, sepia, grayscale
+      );
+      setPreviewUri(`data:image/jpeg;base64,${edited.base64}`);
+      setPreviewSize({ width: edited.width, height: edited.height });
+      onResultChange({ base64: edited.base64, width: edited.width, height: edited.height });
+    } catch (e: any) {
+      console.error('[ImageEditorPanel] Native edit failed:', e.message);
+    } finally {
+      setProcessing(false);
+    }
+  }, [result.base64, rotation, brightness, contrast, saturation, warmth, sepia, grayscale, onResultChange]);
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (!webviewReady) return;
     editCountRef.current++;
     if (editCountRef.current <= 1) return;
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => { applyEdits(); }, 150);
+    timerRef.current = setTimeout(() => { applyEdits(); }, 300);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [rotation, brightness, contrast, saturation, warmth, sepia, grayscale, webviewReady]);
-
-  const chunksRef = useRef<string[]>([]);
-  const chunkMetaRef = useRef<{ total: number; width: number; height: number }>({ total: 0, width: 0, height: 0 });
-
-  const sendImageToWebView = useCallback(() => {
-    if (!webViewRef.current) return;
-    const b64 = result.base64;
-    const CHUNK = 100000;
-    const total = Math.ceil(b64.length / CHUNK);
-    for (let i = 0; i < total; i++) {
-      const chunk = b64.substring(i * CHUNK, (i + 1) * CHUNK);
-      webViewRef.current.injectJavaScript(`receiveImageChunk(${i},${total},'${chunk}'); true;`);
-    }
-  }, [result.base64]);
-
-  const onMessage = useCallback((event: WebViewMessageEvent) => {
-    try {
-      const msg = JSON.parse(event.nativeEvent.data);
-      if (msg.type === 'debug') {
-        console.log(`[ImageEditorPanel] WebView: ${msg.message}`);
-      } else if (msg.type === 'webview_init') {
-        console.log('[ImageEditorPanel] WebView init, sending image...');
-        sendImageToWebView();
-      } else if (msg.type === 'ready') {
-        console.log(`[ImageEditorPanel] Image ready: ${msg.width}x${msg.height}`);
-        setWebviewReady(true);
-      } else if (msg.type === 'result') {
-        setPreviewUri(`data:image/jpeg;base64,${msg.base64}`);
-        setPreviewSize({ width: msg.width, height: msg.height });
-        setProcessing(false);
-        onResultChange({ base64: msg.base64, width: msg.width, height: msg.height });
-      } else if (msg.type === 'chunk') {
-        if (msg.index === 0) {
-          chunksRef.current = new Array(msg.total);
-          chunkMetaRef.current = { total: msg.total, width: msg.width, height: msg.height };
-        }
-        chunksRef.current[msg.index] = msg.data;
-        // Check if all chunks received
-        const allReceived = chunksRef.current.length === chunkMetaRef.current.total &&
-          chunksRef.current.every((c) => c !== undefined);
-        if (allReceived) {
-          const fullBase64 = chunksRef.current.join('');
-          const { width, height } = chunkMetaRef.current;
-          setPreviewUri(`data:image/jpeg;base64,${fullBase64}`);
-          setPreviewSize({ width, height });
-          setProcessing(false);
-          onResultChange({ base64: fullBase64, width, height });
-          chunksRef.current = [];
-        }
-      } else if (msg.type === 'error') {
-        console.error(`[ImageEditorPanel] WebView error: ${msg.message}`);
-        setProcessing(false);
-      }
-    } catch (e) {
-      console.error('[ImageEditorPanel] onMessage parse error:', e);
-    }
-  }, [onResultChange, sendImageToWebView]);
+  }, [rotation, brightness, contrast, saturation, warmth, sepia, grayscale]);
 
   const handleRotateCW = useCallback(() => {
     setRotation((r) => (r + 90) % 360);
@@ -379,17 +216,6 @@ export default function ImageEditorPanel({ result, onResultChange, onRescan, onB
 
   return (
     <View style={styles.container}>
-      <View style={styles.hidden}>
-        <WebView
-          ref={webViewRef}
-          source={{ html: getEditorHtml() }}
-          onMessage={onMessage}
-          javaScriptEnabled
-          originWhitelist={['*']}
-          style={styles.webview}
-        />
-      </View>
-
       {/* Image preview with pinch-to-zoom */}
       <View style={styles.previewArea}>
         <ZoomableImage
@@ -454,8 +280,6 @@ export default function ImageEditorPanel({ result, onResultChange, onRescan, onB
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  hidden: { width: 300, height: 300, overflow: 'hidden', position: 'absolute', left: -9999, top: -9999 },
-  webview: { width: 300, height: 300 },
   previewArea: {
     flex: 1,
     justifyContent: 'center',

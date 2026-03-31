@@ -86,39 +86,36 @@ function dist(p1, p2) {
   return Math.sqrt((p1[0]-p2[0])*(p1[0]-p2[0]) + (p1[1]-p2[1])*(p1[1]-p2[1]));
 }
 
-// ── Bilinear interpolation on source imageData ──
-function bilinear(srcData, sw, sh, x, y) {
-  var x0 = Math.floor(x), y0 = Math.floor(y);
-  var x1 = Math.min(x0+1, sw-1), y1 = Math.min(y0+1, sh-1);
-  x0 = Math.max(0, x0); y0 = Math.max(0, y0);
-  var fx = x - Math.floor(x), fy = y - Math.floor(y);
-  var idx00 = (y0*sw+x0)*4, idx10 = (y0*sw+x1)*4;
-  var idx01 = (y1*sw+x0)*4, idx11 = (y1*sw+x1)*4;
-  var r = [], s = srcData;
-  for (var c = 0; c < 3; c++) {
-    var v = s[idx00+c]*(1-fx)*(1-fy) + s[idx10+c]*fx*(1-fy)
-          + s[idx01+c]*(1-fx)*fy + s[idx11+c]*fx*fy;
-    r.push(v);
-  }
-  return r;
-}
-
-// ── Perspective warp (inverse mapping) ──
+// ── Perspective warp with inlined bilinear interpolation ──
 function warp(srcData, sw, sh, H_inv, dw, dh) {
   var out = new Uint8ClampedArray(dw * dh * 4);
+  var h0 = H_inv[0], h1 = H_inv[1], h2 = H_inv[2];
+  var h3 = H_inv[3], h4 = H_inv[4], h5 = H_inv[5];
+  var h6 = H_inv[6], h7 = H_inv[7], h8 = H_inv[8];
+  var sw1 = sw - 1, sh1 = sh - 1;
   for (var dy = 0; dy < dh; dy++) {
+    var rw = h7*dy + h8;
+    var rx = h1*dy + h2;
+    var ry = h4*dy + h5;
     for (var dx = 0; dx < dw; dx++) {
-      var w = H_inv[6]*dx + H_inv[7]*dy + H_inv[8];
-      var sx = (H_inv[0]*dx + H_inv[1]*dy + H_inv[2]) / w;
-      var sy = (H_inv[3]*dx + H_inv[4]*dy + H_inv[5]) / w;
+      var w = h6*dx + rw;
+      var sx = (h0*dx + rx) / w;
+      var sy = (h3*dx + ry) / w;
       var idx = (dy*dw+dx)*4;
       if (sx >= 0 && sx < sw && sy >= 0 && sy < sh) {
-        var rgb = bilinear(srcData, sw, sh, sx, sy);
-        out[idx]   = rgb[0];
-        out[idx+1] = rgb[1];
-        out[idx+2] = rgb[2];
+        var x0 = sx|0, y0 = sy|0;
+        var x1 = x0 < sw1 ? x0+1 : sw1;
+        var y1 = y0 < sh1 ? y0+1 : sh1;
+        var fx = sx - x0, fy = sy - y0;
+        var fx1 = 1-fx, fy1 = 1-fy;
+        var w00 = fx1*fy1, w10 = fx*fy1, w01 = fx1*fy, w11 = fx*fy;
+        var i00 = (y0*sw+x0)*4, i10 = (y0*sw+x1)*4;
+        var i01 = (y1*sw+x0)*4, i11 = (y1*sw+x1)*4;
+        out[idx]   = srcData[i00]*w00 + srcData[i10]*w10 + srcData[i01]*w01 + srcData[i11]*w11;
+        out[idx+1] = srcData[i00+1]*w00 + srcData[i10+1]*w10 + srcData[i01+1]*w01 + srcData[i11+1]*w11;
+        out[idx+2] = srcData[i00+2]*w00 + srcData[i10+2]*w10 + srcData[i01+2]*w01 + srcData[i11+2]*w11;
+        out[idx+3] = 255;
       }
-      out[idx+3] = 255;
     }
   }
   return out;
@@ -153,11 +150,23 @@ function adaptiveThreshold(gray, w, h, blockSize, C) {
 
 // ── toGray ──
 function toGray(data, w, h) {
-  var gray = new Float64Array(w*h);
-  for (var i = 0; i < w*h; i++) {
-    gray[i] = 0.299*data[i*4] + 0.587*data[i*4+1] + 0.114*data[i*4+2];
+  var n = w*h;
+  var gray = new Uint8Array(n);
+  for (var i = 0; i < n; i++) {
+    gray[i] = (0.299*data[i*4] + 0.587*data[i*4+1] + 0.114*data[i*4+2] + 0.5)|0;
   }
   return gray;
+}
+
+// ── Histogram-based percentile (O(n) instead of O(n log n) sort) ──
+function histPercentile(hist, total, pct) {
+  var target = Math.floor(total * pct);
+  var sum = 0;
+  for (var i = 0; i < 256; i++) {
+    sum += hist[i];
+    if (sum > target) return i;
+  }
+  return 255;
 }
 
 // ── Enhancement modes ──
@@ -167,18 +176,27 @@ function enhanceBW(data, w, h) {
   if (blockSize % 2 === 0) blockSize++;
   var bw = adaptiveThreshold(gray, w, h, blockSize, 10);
   for (var i = 0; i < w*h; i++) {
+    if (data[i*4+3] === 0) continue;
     data[i*4] = data[i*4+1] = data[i*4+2] = bw[i];
   }
 }
 
 function enhanceGray(data, w, h) {
+  var n = w * h;
   var gray = toGray(data, w, h);
-  // percentile stretch 1%–99%
-  var sorted = Array.from(gray).sort(function(a,b){return a-b;});
-  var lo = sorted[Math.floor(sorted.length*0.01)];
-  var hi = sorted[Math.floor(sorted.length*0.99)];
+  var hist = new Uint32Array(256);
+  var valid = 0;
+  for (var i = 0; i < n; i++) {
+    if (data[i*4+3] === 0) continue;
+    hist[gray[i]]++;
+    valid++;
+  }
+  if (valid === 0) return;
+  var lo = histPercentile(hist, valid, 0.01);
+  var hi = histPercentile(hist, valid, 0.99);
   var range = hi - lo || 1;
-  for (var i = 0; i < w*h; i++) {
+  for (var i = 0; i < n; i++) {
+    if (data[i*4+3] === 0) continue;
     var v = Math.round(((gray[i]-lo)/range)*255);
     v = v < 0 ? 0 : v > 255 ? 255 : v;
     data[i*4] = data[i*4+1] = data[i*4+2] = v;
@@ -188,18 +206,22 @@ function enhanceGray(data, w, h) {
 function enhanceColor(data, w, h) {
   var n = w * h;
   for (var c = 0; c < 3; c++) {
-    var ch = new Float64Array(n);
-    for (var i = 0; i < n; i++) ch[i] = data[i*4+c];
-    var sorted = Array.from(ch).sort(function(a,b){return a-b;});
-    var lo = sorted[Math.floor(n*0.01)];
-    var hi = sorted[Math.floor(n*0.99)];
+    var hist = new Uint32Array(256);
+    var valid = 0;
+    for (var i = 0; i < n; i++) {
+      if (data[i*4+3] === 0) continue;
+      hist[data[i*4+c]]++;
+      valid++;
+    }
+    if (valid === 0) continue;
+    var lo = histPercentile(hist, valid, 0.01);
+    var hi = histPercentile(hist, valid, 0.99);
     var range = hi - lo || 1;
     for (var i = 0; i < n; i++) {
-      var v = ((ch[i]-lo)/range)*255;
+      if (data[i*4+3] === 0) continue;
+      var v = ((data[i*4+c]-lo)/range)*255;
       v = v < 0 ? 0 : v > 255 ? 255 : v;
-      // gamma correction (0.85)
-      v = Math.round(v);
-      data[i*4+c] = v;
+      data[i*4+c] = Math.round(v);
     }
   }
 }
@@ -1084,13 +1106,23 @@ function decodeBase64Image(base64) {
   var bytes = new Uint8Array(binary.length);
   for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   var blob = new Blob([bytes], { type: 'image/jpeg' });
-  return createImageBitmap(blob);
+  // First create at full size to get dimensions, then resize if needed
+  return createImageBitmap(blob).then(function(fullBmp) {
+    var maxDim = 1600;
+    if (fullBmp.width <= maxDim && fullBmp.height <= maxDim) return fullBmp;
+    var scale = maxDim / Math.max(fullBmp.width, fullBmp.height);
+    var nw = Math.round(fullBmp.width * scale);
+    var nh = Math.round(fullBmp.height * scale);
+    fullBmp.close();
+    return createImageBitmap(blob, { resizeWidth: nw, resizeHeight: nh, resizeQuality: 'high' });
+  });
 }
 
 // ── Main process handler ──
 function processImage(base64, corners, mode) {
   return decodeBase64Image(base64).then(function(bmp) {
     var sw = bmp.width, sh = bmp.height;
+
     var srcCanvas = document.getElementById('src');
     srcCanvas.width = sw; srcCanvas.height = sh;
     var srcCtx = srcCanvas.getContext('2d');
@@ -1107,7 +1139,7 @@ function processImage(base64, corners, mode) {
     var dh = Math.round(Math.max(dist(tl,bl), dist(tr,br)));
     dw = Math.max(dw, 100);
     dh = Math.max(dh, 100);
-    var maxDim = 3000;
+    var maxDim = 2000;
     if (dw > maxDim || dh > maxDim) {
       var dimScale = maxDim / Math.max(dw, dh);
       dw = Math.round(dw * dimScale);
@@ -1127,6 +1159,14 @@ function processImage(base64, corners, mode) {
     else if (mode === 'gray') enhanceGray(warped, dw, dh);
     else enhanceColor(warped, dw, dh);
 
+    // Fill out-of-bounds pixels with white and ensure all alpha=255 for JPEG
+    for (var fi = 0; fi < dw*dh; fi++) {
+      if (warped[fi*4+3] === 0) {
+        warped[fi*4] = warped[fi*4+1] = warped[fi*4+2] = 255;
+      }
+      warped[fi*4+3] = 255;
+    }
+
     var dstCanvas = document.getElementById('dst');
     dstCanvas.width = dw; dstCanvas.height = dh;
     var dstCtx = dstCanvas.getContext('2d');
@@ -1134,7 +1174,7 @@ function processImage(base64, corners, mode) {
     imgData.data.set(warped);
     dstCtx.putImageData(imgData, 0, 0);
 
-    var resultB64 = dstCanvas.toDataURL('image/png').split(',')[1];
+    var resultB64 = dstCanvas.toDataURL('image/jpeg', 0.92).split(',')[1];
     return { base64: resultB64, width: dw, height: dh, srcWidth: sw, srcHeight: sh };
   });
 }
@@ -1197,6 +1237,53 @@ function previewFilters(base64, corners) {
   });
 }
 
+// ── Input chunk assembly (called via injectJavaScript) ──
+var processChunks = [];
+var processChunkTotal = 0;
+
+function receiveProcessChunk(index, total, data) {
+  processChunkTotal = total;
+  if (index === 0) processChunks = new Array(total);
+  processChunks[index] = data;
+}
+
+function startProcess(corners, mode) {
+  var b64 = processChunks.join('');
+  processChunks = [];
+  processChunkTotal = 0;
+
+  function sendResult(result) {
+    var rb64 = result.base64;
+    var CHUNK = 512000;
+    if (rb64.length > CHUNK) {
+      var total = Math.ceil(rb64.length / CHUNK);
+      for (var ri = 0; ri < total; ri++) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'resultChunk', index: ri, total: total,
+          data: rb64.substr(ri * CHUNK, CHUNK),
+          width: result.width, height: result.height,
+          srcWidth: result.srcWidth, srcHeight: result.srcHeight
+        }));
+      }
+    } else {
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'result', base64: rb64,
+        width: result.width, height: result.height,
+        srcWidth: result.srcWidth, srcHeight: result.srcHeight
+      }));
+    }
+  }
+
+  processImage(b64, corners, mode)
+    .then(sendResult)
+    .catch(function(err) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'error', context: 'process',
+        message: err.message || 'Processing failed'
+      }));
+    });
+}
+
 // ── Message handler ──
 window.addEventListener('message', function(e) {
   try {
@@ -1204,14 +1291,32 @@ window.addEventListener('message', function(e) {
     if (msg.type === 'process') {
       processImage(msg.base64, msg.corners, msg.mode)
         .then(function(result) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'result',
-            base64: result.base64,
-            width: result.width,
-            height: result.height,
-            srcWidth: result.srcWidth,
-            srcHeight: result.srcHeight
-          }));
+          var b64 = result.base64;
+          var CHUNK = 512000;
+          if (b64.length > CHUNK) {
+            var total = Math.ceil(b64.length / CHUNK);
+            for (var ci = 0; ci < total; ci++) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'resultChunk',
+                index: ci,
+                total: total,
+                data: b64.substr(ci * CHUNK, CHUNK),
+                width: result.width,
+                height: result.height,
+                srcWidth: result.srcWidth,
+                srcHeight: result.srcHeight
+              }));
+            }
+          } else {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'result',
+              base64: b64,
+              width: result.width,
+              height: result.height,
+              srcWidth: result.srcWidth,
+              srcHeight: result.srcHeight
+            }));
+          }
         })
         .catch(function(err) {
           window.ReactNativeWebView.postMessage(JSON.stringify({

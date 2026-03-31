@@ -22,7 +22,7 @@ import CornerSelector from '@/components/scanner/CornerSelector';
 import ImageProcessor, { ImageProcessorHandle } from '@/components/scanner/ImageProcessor';
 import { generatePdf } from '@/services/pdfService';
 import { checkAndShowAd } from '@/services/adService';
-import { detectDocument } from '@/modules/document-detection/src';
+import { detectDocument, processImageNative } from '@/modules/document-detection/src';
 import { SUPPORTED_LANGUAGES, changeLanguage } from '@/i18n';
 import CameraScanner from '@/components/scanner/CameraScanner';
 import ZoomableImage from '@/components/ZoomableImage';
@@ -147,7 +147,7 @@ export default function ScanScreen() {
   }, [t, handleAssetPicked]);
 
   const doProcess = useCallback(async () => {
-    if (!imageUri || !processorRef.current) return;
+    if (!imageUri) return;
     setProcessing(true);
     try {
       let base64 = base64Ref.current;
@@ -156,7 +156,15 @@ export default function ScanScreen() {
         base64 = await file.base64();
         base64Ref.current = base64;
       }
-      const scanResult = await processorRef.current.process(base64, corners, enhanceMode);
+      // Use native iOS Core Image for perspective correction (full-res, no WebView limits)
+      let scanResult: { base64: string; width: number; height: number };
+      try {
+        scanResult = await processImageNative(base64, corners, enhanceMode);
+      } catch {
+        // Fallback to WebView processing if native fails
+        if (!processorRef.current) throw new Error('Processor not ready');
+        scanResult = await processorRef.current.process(base64, corners, enhanceMode);
+      }
       setResult(scanResult);
       setStep('preview');
     } catch (e: any) {
@@ -178,7 +186,7 @@ export default function ScanScreen() {
       if (!scansDir.exists) {
         scansDir.create();
       }
-      const outFile = new File(scansDir, `scan_${Date.now()}.png`);
+      const outFile = new File(scansDir, `scan_${Date.now()}.jpg`);
       outFile.create();
       outFile.write(result.base64, { encoding: 'base64' });
       await MediaLibrary.saveToLibraryAsync(outFile.uri);

@@ -1,0 +1,18 @@
+<lint-module
+    format="1"
+    dir="/Users/binzhu/Projects/pixnap/modules/document-detection/android"
+    name=":document-detection"
+    type="LIBRARY"
+    maven="expo.modules.documentdetection:document-detection:unspecified"
+    agpVersion="8.11.0"
+    buildFolder="build"
+    bootClassPath="/Users/binzhu/Library/Android/sdk/platforms/android-36/android.jar:/Users/binzhu/Library/Android/sdk/build-tools/35.0.0/core-lambda-stubs.jar"
+    javaSourceLevel="17"
+    compileTarget="android-36"
+    neverShrinking="true">
+  <lintOptions
+      absolutePaths="true"
+      checkReleaseBuilds="true"
+      explainIssues="true"/>
+  <variant name="release"/>
+</lint-module>
